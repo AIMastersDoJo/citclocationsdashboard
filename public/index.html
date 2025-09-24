@@ -200,7 +200,8 @@
       // Load data automatically on change
       const load = debounce(async () => {
         const start = elStart.value; const end = elEnd.value;
-        const locations = Array.from(document.querySelectorAll('.loc:checked')).map(i => i.value).join('|');
+        const locArray = Array.from(document.querySelectorAll('.loc:checked')).map(i => i.value);
+        const locations = locArray.join('|');
         if (!start || !end) return;
         elLoading.style.display = '';
         elSections.innerHTML = '';
@@ -215,11 +216,14 @@
           let data = await res.json();
           if (!res.ok) throw new Error(data?.error || 'Request failed');
           elCache.textContent = data.cached ? 'Cached result' : 'Fresh result';
-          renderSections(filterByCourses(data.data));
+          const filtered = filterByLocations(filterByCourses(data.data), new Set(locArray));
+          renderSections(filtered);
         } catch (e) {
           // Fallback to local sample for preview
           elCache.textContent = 'Sample result (no API)';
-          renderSections(filterByCourses(buildLocalSample()));
+          const sample = buildLocalSample();
+          const filtered = filterByLocations(filterByCourses(sample), new Set(locArray));
+          renderSections(filtered);
         } finally {
           elLoading.style.display = 'none';
         }
@@ -238,6 +242,15 @@
         const out = {};
         for (const [loc, rows] of Object.entries(map)) {
           out[loc] = rows.filter(r => selected.has(r.trainingCategory || ''));
+        }
+        return out;
+      }
+
+      function filterByLocations(map, selectedSet){
+        if (!selectedSet || selectedSet.size === 0) return map;
+        const out = {};
+        for (const [loc, rows] of Object.entries(map)) {
+          if (selectedSet.has(loc)) out[loc] = rows;
         }
         return out;
       }

@@ -194,7 +194,8 @@
         'Cert IV in WHS'
       ];
       const courseList = document.getElementById('courseList');
-      courseList.innerHTML = COURSE_NAMES.map(c => `<label><input type="checkbox" class="course" value="${escapeHtml(c)}" checked /> ${escapeHtml(c)}</label>`).join('');
+      const SORTED_COURSES = [...COURSE_NAMES].sort((a,b)=> a.localeCompare(b, undefined, { sensitivity: 'base' }));
+      courseList.innerHTML = SORTED_COURSES.map(c => `<label><input type="checkbox" class="course" value="${escapeHtml(c)}" checked /> ${escapeHtml(c)}</label>`).join('');
 
       // Load data automatically on change
       const load = debounce(async () => {
@@ -258,9 +259,11 @@
           } else {
             // Group by trainingCategory
             const groups = groupBy(records, r => r.trainingCategory || 'Unknown');
-            Object.entries(groups).forEach(([category, rows]) => {
-              wrap.appendChild(courseCard(category, rows));
-            });
+            Object.entries(groups)
+              .sort((a,b)=> a[0].localeCompare(b[0], undefined, { sensitivity: 'base' }))
+              .forEach(([category, rows]) => {
+                wrap.appendChild(courseCard(category, rows));
+              });
           }
           elSections.appendChild(section);
         }

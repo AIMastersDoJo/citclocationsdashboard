@@ -1,0 +1,12 @@
+# Node and environment
+node_modules/
+.env
+.env.local
+npm-debug.log*
+yarn-error.log
+
+# OS/editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

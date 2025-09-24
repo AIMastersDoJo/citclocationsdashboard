@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CITC Locations Dashboard • Sample</title>
+    <style>
+      :root {
+        --citc-orange: #eb920c; /* brand accent */
+        --grey-900: #3f454b;    /* dark slate from site */
+        --grey-700: #5a6168;
+        --grey-300: #d1d5db;
+        --grey-100: #f3f4f6;
+        --ink: #1f2937;
+        --bg: #f6f7f9;
+        --card: #ffffff;
+        --muted: #6b7280;
+        --ok: #16a34a;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body { margin: 0; min-height: 100vh; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: var(--ink); background: var(--bg); }
+      header { background: var(--grey-900); color: #fff; padding: 14px 20px; border-bottom: 4px solid var(--citc-orange); }
+      header h1 { margin: 0; font-size: 18px; letter-spacing: 0.3px; }
+      .container { width: 100%; max-width: none; margin: 0 auto; padding: 0 16px; }
+      .panel { background: var(--card); border: 1px solid var(--grey-300); border-radius: 12px; padding: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+      .controls { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; align-items: end; }
+      .controls .field { display: flex; flex-direction: column; gap: 6px; }
+      label { font-size: 12px; color: var(--muted); }
+      input[type="date"], select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--grey-300); background: #fff; }
+      .locs { grid-column: span 3; display: flex; gap: 14px; flex-wrap: wrap; }
+      .locs label { color: var(--ink); font-size: 13px; }
+      .btn { background: var(--citc-orange); color: #fff; border: 0; border-radius: 8px; padding: 10px 14px; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+      .btn:disabled { opacity: 0.7; cursor: not-allowed; }
+      .meta { margin-top: 10px; color: var(--muted); font-size: 12px; }
+      .layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
+      .filters { background: var(--card); border: 1px solid var(--grey-300); border-radius: 12px; padding: 12px; max-height: calc(100vh - 220px); overflow: auto; position: sticky; top: 12px; }
+      .filters h3 { margin: 6px 0 10px; font-size: 14px; color: var(--grey-900); }
+      .filters .group { margin-bottom: 12px; }
+      .filters .cols { columns: 1; column-gap: 8px; }
+      .filters label { display: block; break-inside: avoid; padding: 4px 2px; font-size: 12px; }
+      .sections { margin-top: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+      .section { background: var(--card); border: 1px solid var(--grey-300); border-radius: 12px; overflow: hidden; }
+      .section h2 { margin: 0; padding: 10px 14px; background: var(--grey-100); color: var(--grey-900); font-size: 14px; letter-spacing: 0.5px; text-transform: uppercase; border-bottom: 1px solid var(--grey-300); }
+      .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; padding: 12px; }
+      .card { background: #fff; border: 1px solid var(--grey-300); border-radius: 10px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
+      .card h3 { margin: 0; padding: 8px 10px; text-align: center; font-size: 15px; font-weight: 800; color: var(--grey-900); background: #fff; border-bottom: 1px solid var(--grey-300); }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border: 1px solid var(--grey-300); padding: 6px 8px; font-size: 12px; text-align: center; }
+      thead th { background: var(--grey-100); font-weight: 700; color: var(--grey-900); }
+      .price { color: var(--citc-orange); font-weight: 800; }
+      .full { color: var(--ok); font-weight: 800; }
+      .muted { color: var(--muted); }
+      .loading { margin-top: 10px; color: var(--muted); font-size: 13px; }
+      footer { text-align: center; color: #fff; font-size: 12px; margin: 0; padding: 10px 16px; background: var(--citc-orange); }
+      @media (max-width: 1600px) { .sections { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+      @media (max-width: 1200px) { .sections { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      @media (max-width: 960px)  { .layout { grid-template-columns: 1fr; } .sections { grid-template-columns: 1fr; } .controls { grid-template-columns: 1fr 1fr; } .locs { grid-column: span 2; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>CITC Locations Dashboard — Sample UI</h1>
+    </header>
+
+    <div class="container">
+      <div class="panel">
+        <div class="controls">
+          <div class="field">
+            <label for="start">Start (YYYY-MM-DD)</label>
+            <input id="start" type="date" />
+          </div>
+          <div class="field">
+            <label for="end">End (YYYY-MM-DD)</label>
+            <input id="end" type="date" />
+          </div>
+          <div class="field locs" style="grid-column: span 4;">
+            <label><input type="checkbox" class="loc" value="Mount Gambier" checked /> Mount Gambier</label>
+            <label><input type="checkbox" class="loc" value="Port Pirie" checked /> Port Pirie</label>
+            <label><input type="checkbox" class="loc" value="Whyalla" checked /> Whyalla</label>
+            <label><input type="checkbox" class="loc" value="Regency" checked /> Regency</label>
+          </div>
+        </div>
+        <div class="meta">
+          <span id="health">Checking server…</span>
+          <span id="cache" style="margin-left: 10px;"></span>
+        </div>
+        <div id="loading" class="loading" style="display:none;">Loading data…</div>
+      </div>
+
+      <div class="layout">
+        <aside class="filters">
+          <h3>Courses</h3>
+          <div id="courseList" class="cols"></div>
+        </aside>
+        <main id="sections" class="sections" aria-live="polite"></main>
+      </div>
+    </div>
+
+    <footer>Colours sampled from citc.com.au · This is a local demo.</footer>
+
+    <script>
+      // Build a local sample dataset (kept as fallback if API unavailable)
+      function buildLocalSample() {
+        const sessionRows = [
+          { startDate: '2024-04-22', endDate: '2024-04-26', numbers: 3, capacity: 10 },
+          { startDate: '2024-10-27', endDate: '2024-10-31', numbers: 8, capacity: 10 },
+          { startDate: '2024-11-20', endDate: '2024-11-24', numbers: 10, capacity: 10 }
+        ];
+        const price = 1795; // illustrative
+        const coursesByLocation = {
+          'Regency': ['Dogging', 'White Card (General Construction Induction)', 'Forklift'],
+          'Mount Gambier': ['Dogging', 'Forklift', 'CN Crane'],
+          'Port Pirie': ['Dogging', 'Forklift', 'CN Crane'],
+          'Whyalla': ['Dogging', 'White Card (General Construction Induction)', 'MPTV (Mobile Plant Ticket Verification / High Risk)']
+        };
+        const out = {};
+        Object.keys(coursesByLocation).forEach((loc) => {
+          let id = 1000;
+          out[loc] = coursesByLocation[loc].flatMap((course) =>
+            sessionRows.map((r) => ({
+              instanceID: `${loc}-${course}-${id++}`,
+              trainingCategory: course,
+              startDate: r.startDate,
+              endDate: r.endDate,
+              numbers: r.numbers,
+              capacity: r.capacity,
+              revenue: r.numbers * price
+            }))
+          );
+        });
+        return out;
+      }
+      const elStart = document.getElementById('start');
+      const elEnd = document.getElementById('end');
+      const elMode = document.getElementById('mode');
+      const elLoad = document.getElementById('load');
+      const elSections = document.getElementById('sections');
+      const elHealth = document.getElementById('health');
+      const elCache = document.getElementById('cache');
+      const elLoading = document.getElementById('loading');
+
+      // Default to current month
+      (function initDates(){
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        elStart.value = toISODate(start);
+        elEnd.value = toISODate(end);
+      })();
+
+      // Health check
+      fetch('/api/health').then(r => r.json()).then(j => {
+        elHealth.textContent = `Server: ${j.status} · ${new Date(j.time).toLocaleString()}`;
+      }).catch(() => {
+        elHealth.textContent = 'Server: unavailable';
+      });
+      // Populate left column with course checkboxes
+      const COURSE_NAMES = [
+        'Dogging',
+        'Basic Rigging',
+        'Intermediate Rigging',
+        'Advanced Rigging',
+        'CV Crane',
+        'CN Crane',
+        'Slewing Crane (C2)',
+        'Bridge & Gantry Crane',
+        'C6 Crane',
+        'Basic Scaffold (A)',
+        'Intermediate Scaffold',
+        'Advanced Scaffold (A)',
+        'EWP (Elevated Work Platform)',
+        'Scissor Lift',
+        'Vertical Lift',
+        'Scissor & Boom Lift',
+        'Scissor & Vertical Lifts',
+        'Scissor, Boom & Vertical Lift (combined)',
+        'WSAH (Work Safely at Heights)',
+        'Forklift',
+        'Forklift (Entry Level)',
+        'Order Picker',
+        'White Card (General Construction Induction)',
+        'Confined Space',
+        'Confined Space (Combo)',
+        'Breathing Apparatus',
+        'Dangerous Goods',
+        'Load Restraint',
+        'Safety Leadership',
+        'Crystalline Silica Awareness',
+        'Excavator',
+        'FEL (Front End Loader)',
+        'Skid Steer',
+        'MPTV (Mobile Plant Ticket Verification / High Risk)',
+        'Cert IV in WHS'
+      ];
+      const courseList = document.getElementById('courseList');
+      courseList.innerHTML = COURSE_NAMES.map(c => `<label><input type="checkbox" class="course" value="${escapeHtml(c)}" checked /> ${escapeHtml(c)}</label>`).join('');
+
+      // Load data automatically on change
+      const load = debounce(async () => {
+        const start = elStart.value; const end = elEnd.value;
+        const locations = Array.from(document.querySelectorAll('.loc:checked')).map(i => i.value).join('|');
+        if (!start || !end) return;
+        elLoading.style.display = '';
+        elSections.innerHTML = '';
+        elCache.textContent = '';
+        try {
+          // Try live first
+          const url = new URL('/api/sync', window.location.origin);
+          url.searchParams.set('start', start);
+          url.searchParams.set('end', end);
+          if (locations) url.searchParams.set('locations', locations);
+          const res = await fetch(url.toString());
+          let data = await res.json();
+          if (!res.ok) throw new Error(data?.error || 'Request failed');
+          elCache.textContent = data.cached ? 'Cached result' : 'Fresh result';
+          renderSections(filterByCourses(data.data));
+        } catch (e) {
+          // Fallback to local sample for preview
+          elCache.textContent = 'Sample result (no API)';
+          renderSections(filterByCourses(buildLocalSample()));
+        } finally {
+          elLoading.style.display = 'none';
+        }
+      }, 300);
+
+      ['change','input'].forEach(evt => {
+        document.querySelectorAll('.loc, #start, #end, .course').forEach(el => el.addEventListener(evt, load));
+      });
+
+      // Initial load
+      load();
+
+      function filterByCourses(map){
+        const selected = new Set(Array.from(document.querySelectorAll('.course:checked')).map(i => i.value));
+        if (selected.size === 0) return map; // nothing selected -> show all
+        const out = {};
+        for (const [loc, rows] of Object.entries(map)) {
+          out[loc] = rows.filter(r => selected.has(r.trainingCategory || ''));
+        }
+        return out;
+      }
+
+      function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+
+      function renderSections(map){
+        const ORDER = ['Regency', 'Mount Gambier', 'Port Pirie', 'Whyalla'];
+        const locations = ORDER.filter(loc => Object.prototype.hasOwnProperty.call(map, loc))
+          .concat(Object.keys(map).filter(l => !ORDER.includes(l)));
+        for (const loc of locations) {
+          const section = document.createElement('div');
+          section.className = 'section';
+          section.innerHTML = `<h2>${loc}</h2><div class="cards"></div>`;
+          const wrap = section.querySelector('.cards');
+          const records = map[loc] || [];
+          if (records.length === 0) {
+            wrap.innerHTML = '<div class="card"><h3>No instances in range</h3></div>';
+          } else {
+            // Group by trainingCategory
+            const groups = groupBy(records, r => r.trainingCategory || 'Unknown');
+            Object.entries(groups).forEach(([category, rows]) => {
+              wrap.appendChild(courseCard(category, rows));
+            });
+          }
+          elSections.appendChild(section);
+        }
+      }
+      function courseCard(category, rows){
+        const el = document.createElement('div');
+        el.className = 'card';
+        const sorted = [...rows].sort((a,b)=> new Date(a.startDate) - new Date(b.startDate));
+        const bodyRows = sorted.map(r => {
+          const isFull = isFinite(r.numbers) && isFinite(r.capacity) && Number(r.numbers) >= Number(r.capacity) && Number(r.capacity) > 0;
+          return `<tr>
+            <td>${shortDate(r.startDate)}</td>
+            <td>${shortDate(r.endDate)}</td>
+            <td>${isFull ? '<span class="full">Full</span>' : num(r.numbers)}</td>
+            <td>${num(r.capacity)}</td>
+          </tr>`;
+        }).join('');
+        el.innerHTML = `
+          <h3>${escapeHtml(category)}</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Full</th>
+                <th class="price">$1,795</th>
+                <th>CITB</th>
+                <th class="price">$895</th>
+              </tr>
+              <tr>
+                <th>Start</th>
+                <th>End</th>
+                <th>Numbers</th>
+                <th>Capacity</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${bodyRows}
+            </tbody>
+          </table>
+        `;
+        return el;
+      }
+
+      function groupBy(arr, keyFn){
+        return arr.reduce((acc, item) => {
+          const k = keyFn(item);
+          (acc[k] ||= []).push(item);
+          return acc;
+        }, {});
+      }
+
+      function toISODate(d){ return d.toISOString().slice(0,10); }
+      function formatDate(v){ if(!v) return ''; const d = new Date(v); return isNaN(d) ? v : d.toLocaleDateString(); }
+      function money(v){ const n = Number(v||0); return n.toLocaleString(undefined,{ style:'currency', currency:'AUD' }); }
+      function shortDate(v){ if(!v) return ''; const d = new Date(v); if(isNaN(d)) return v; const s = d.toLocaleDateString('en-AU',{ day:'2-digit', month:'short'}); return s.replace('.', ''); }
+      function num(v){ return (v==null||isNaN(Number(v))) ? '-' : String(v); }
+      function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m])); }
+    </script>
+  </body>
+  </html>

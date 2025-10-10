@@ -58,6 +58,52 @@
       @media (max-width: 1600px) { .sections { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
       @media (max-width: 1200px) { .sections { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
       @media (max-width: 960px)  { .layout { grid-template-columns: 1fr; } .sections { grid-template-columns: 1fr; } .controls { grid-template-columns: 1fr 1fr; } .locs { grid-column: span 2; } }
+      /* === Centered Loader Overlay === */
+      .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.85);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+      }
+
+      /* Show loader when visible */
+      .loading-overlay.visible {
+        opacity: 1;
+        pointer-events: all;
+      }
+
+      /* Spinner element */
+      .spinner {
+        width: 50px;
+        height: 50px;
+        border: 5px solid #ddd;
+        border-top: 5px solid var(--citc-orange);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 12px;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      /* Loading text */
+      .loading-overlay p {
+        font-size: 16px;
+        color: var(--grey-900);
+        font-weight: 500;
+        margin: 0;
+      }
     </style>
   </head>
   <body>
@@ -80,7 +126,10 @@
           <span id="health">Checking server…</span>
           <span id="cache" style="margin-left: 10px;"></span>
         </div>
-        <div id="loading" class="loading" style="display:none;">Loading data…</div>
+        <div class="loading-overlay" id="loadingOverlay">
+          <div class="spinner"></div>
+          <p>Loading data...</p>
+        </div>
       </div>
 
       <div class="layout">
@@ -98,7 +147,15 @@
 
     <footer>Colours sampled from citc.com.au · This is a local demo.</footer>
 
+    <script src="/config.js"></script>
+
     <script>
+
+      // === CONFIGURATION FLAGS ===
+      // When deploying to production, set these two variables before this script.
+      const API_BASE = window.DASHBOARD_API_BASE || window.location.origin; // e.g., https://api.citc.com.au
+      const DEMO_MODE = window.DASHBOARD_DEMO_MODE === true;
+      
       // Build a local sample dataset (kept as fallback if API unavailable)
       function buildLocalSample() {
         const sessionRows = [
@@ -150,7 +207,7 @@
       })();
 
       // Health check
-      fetch('/api/health').then(r => r.json()).then(j => {
+      fetch(`${API_BASE}/api/health`).then(r => r.json()).then(j => {
         elHealth.textContent = `Server: ${j.status} · ${new Date(j.time).toLocaleString()}`;
       }).catch(() => {
         elHealth.textContent = 'Server: unavailable';
@@ -163,7 +220,7 @@
         'Advanced Rigging',
         'CV Crane',
         'CN Crane',
-        'Slewing Crane (C2)',
+        'Slewing Crane',
         'Bridge & Gantry Crane',
         'C6 Crane',
         'Basic Scaffold (A)',
@@ -209,15 +266,24 @@
 
       // Load data automatically on change
       const load = debounce(async () => {
+        const loaderOverlay = document.getElementById("loadingOverlay");
         const start = startDate; const end = endDate;
         const locArray = Array.from(document.querySelectorAll('.loc:checked')).map(i => i.value);
         const locations = locArray.join('|');
-        elLoading.style.display = '';
+        if (DEMO_MODE) {
+          elCache.textContent = 'Demo mode enabled';
+          const sample = buildLocalSample();
+          const filtered = filterByLocations(filterByCourses(sample), new Set(locArray));
+          renderSections(filtered);
+          elLoading.classList.remove('visible');
+          return;
+        }
+        if (loaderOverlay) loaderOverlay.classList.add('visible');
         elSections.innerHTML = '';
         elCache.textContent = '';
         try {
           // Try live first
-          const url = new URL('/api/sync', window.location.origin);
+          const url = new URL(`${API_BASE}/api/sync`);
           url.searchParams.set('start', start);
           url.searchParams.set('end', end);
           if (locations) url.searchParams.set('locations', locations);
@@ -234,7 +300,7 @@
           const filtered = filterByLocations(filterByCourses(sample), new Set(locArray));
           renderSections(filtered);
         } finally {
-          elLoading.style.display = 'none';
+          if (loaderOverlay) loaderOverlay.classList.remove('visible');
         }
       }, 300);
 
@@ -286,11 +352,20 @@
       load();
 
       function filterByCourses(map){
-        const selected = new Set(Array.from(document.querySelectorAll('.course:checked')).map(i => i.value));
-        if (selected.size === 0) return map; // nothing selected -> show all
+        const selected = new Set(
+          Array.from(document.querySelectorAll('.course:checked')).map(i =>
+            i.value.trim().replace(/,+$/, '') // remove trailing commas
+          )
+        );
+
+        if (selected.size === 0) return map; // show all if none selected
+
         const out = {};
         for (const [loc, rows] of Object.entries(map)) {
-          out[loc] = rows.filter(r => selected.has(r.trainingCategory || ''));
+          out[loc] = rows.filter(r => {
+            const name = (r.trainingCategory || '').trim().replace(/,+$/, '');
+            return selected.has(name);
+          });
         }
         return out;
       }

@@ -2,6 +2,7 @@
 
 const express = require('express');
 const axios = require('axios');
+const qs = require('qs');
 const pLimit = require('p-limit');
 
 const app = express();
@@ -19,7 +20,7 @@ const PORT = Number(PORT_ENV) || 3001;
 const CONCURRENCY_LIMIT = Math.max(1, Number(CONCURRENCY_LIMIT_ENV) || 8);
 const CACHE_TTL_SECONDS = Math.max(1, Number(CACHE_TTL_SECONDS_ENV) || 25);
 
-const DEFAULT_LOCATIONS = ['Mount Gambier', 'Port Pirie', 'Whyalla'];
+const DEFAULT_LOCATIONS = ['Mount Gambier', 'Port Pirie', 'Whyalla', 'Regency'];
 const VALID_REVENUE_MODES = new Set(['enrolment', 'invoice']);
 
 if (!AXC_BASE || !AXC_API_TOKEN || !AXC_WS_TOKEN) {
@@ -32,22 +33,33 @@ const axiosClient = axios.create({
   baseURL: AXC_BASE,
   timeout: 15000,
   headers: {
-    'Content-Type': 'application/json',
+    'Content-Type': 'application/x-www-form-urlencoded',
     Accept: 'application/json',
+    apitoken: AXC_API_TOKEN,
+    wstoken: AXC_WS_TOKEN,
   },
 });
 
-if (AXC_API_TOKEN && AXC_WS_TOKEN) {
-  const authHeader = Buffer.from(`${AXC_API_TOKEN}:${AXC_WS_TOKEN}`).toString('base64');
-  axiosClient.interceptors.request.use((config) => {
-    const nextConfig = config;
-    nextConfig.headers = nextConfig.headers || {};
-    nextConfig.headers.Authorization = `Basic ${authHeader}`;
-    return nextConfig;
-  });
-}
+// if (AXC_API_TOKEN && AXC_WS_TOKEN) {
+//   const authHeader = Buffer.from(`${AXC_API_TOKEN}:${AXC_WS_TOKEN}`).toString('base64');
+//   axiosClient.interceptors.request.use((config) => {
+//     const nextConfig = config;
+//     nextConfig.headers = nextConfig.headers || {};
+//     nextConfig.headers.Authorization = `Basic ${authHeader}`;
+//     return nextConfig;
+//   });
+// }
 
 const cacheStore = new Map();
+
+// Serve config dynamically from .env
+app.get('/config.js', (req, res) => {
+  res.type('application/javascript');
+  res.send(`
+    window.DASHBOARD_API_BASE = "${process.env.API_BASE || 'http://localhost:3002'}";
+    window.DASHBOARD_DEMO_MODE = ${process.env.DEMO_MODE === 'true'};
+  `);
+});
 
 // Serve a simple static demo UI from / (public/index.html)
 app.use(express.static('public'));
@@ -113,13 +125,14 @@ app.get('/api/sync', async (req, res) => {
     }
 
     const updated = new Date().toISOString();
-    const payload = {
+      const payload = {
       cached: false,
       updated,
       range: { start, end },
-      data,
+      data
     };
     setCache(cacheKey, { data, updated });
+    // console.log('[FINAL PAYLOAD]', JSON.stringify(payload, null, 2));
     res.json(payload);
   } catch (error) {
     console.error('[sync] Upstream error', sanitiseError(error));
@@ -159,16 +172,20 @@ function getFromCache(key) {
  * @returns {Promise<Array<Object>>}
  */
 async function fetchInstances(location, start, end) {
-  const body = {
+  const body = qs.stringify({
     type: 'w',
     location,
     startDate_min: start,
     startDate_max: end,
     purgeCache: true,
     displayLength: 200,
-  };
+  });
 
-  const response = await requestWithRetry(() => axiosClient.post('/course/instance/search', body));
+  const response = await requestWithRetry(() =>
+    axiosClient.post('/course/instance/search', body)
+  );
+
+  // console.log('[API RESPONSE]', location, response.data); 
   return normaliseArrayPayload(response.data);
 }
 
@@ -190,8 +207,18 @@ async function buildCard(instance, revenueMode) {
   const trainingCategory =
     pickFirstString(instance, ['TRAININGCATEGORY', 'TRAINING_CATEGORY', 'ACTIVITYNAME', 'COURSETITLE', 'Name']) || 'Unknown';
 
-  const startDate = pickFirstString(instance, ['STARTDATE', 'START', 'START_DATE', 'STARTTIME']) || null;
-  const endDate = pickFirstString(instance, ['ENDDATE', 'FINISHDATE', 'END', 'END_DATE', 'FINISHTIME']) || null;
+  const startDateRaw = pickFirstString(instance, ['STARTDATE', 'START', 'START_DATE', 'STARTTIME']) || null;
+  const endDateRaw = pickFirstString(instance, ['ENDDATE', 'FINISHDATE', 'END', 'END_DATE', 'FINISHTIME']) || null;
+
+  const formatDate = (str) => {
+    if (!str) return null;
+    // handle both "2025-10-28 08:00:00" and "2025-10-28T08:00:00Z"
+    const dateOnly = str.split(' ')[0].split('T')[0];
+    return dateOnly;
+  };
+
+  const startDate = formatDate(startDateRaw);
+  const endDate = formatDate(endDateRaw);
 
   const numbers =
     pickFirstNumber(instance, ['NUMBERS', 'NUMBER', 'ENROLMENTS', 'TOTALENROLMENTS', 'TOTALENROLLED']) ??
@@ -205,11 +232,16 @@ async function buildCard(instance, revenueMode) {
       : enrolmentRevenue;
 
   return {
+    id: instanceID,
     instanceID,
     trainingCategory,
+    trainingCategoryName: trainingCategory, // add alias
+    start: startDate,                       // alias for frontend
     startDate,
+    end: endDate,
     endDate,
     numbers,
+    booked: numbers,                        // alias for frontend
     capacity,
     revenue,
   };
@@ -225,10 +257,33 @@ async function fetchEnrolmentInfo(instanceID, revenueMode) {
     concurrencyLimiter(() => axiosClient.get('/course/enrolments', { params: { type: 'w', instanceID } }))
   );
   const enrolments = normaliseArrayPayload(response.data);
-  const enrolmentRevenue = enrolments.reduce(
-    (total, enrolment) => total + (parseNumber(pickFirstValue(enrolment, ['cost', 'COST', 'Cost', 'FEE', 'AMOUNT'])) || 0),
-    0
-  );
+  // console.log('[ENROLMENT DATA]', instanceID, enrolments[0]);
+
+ const enrolmentRevenue = enrolments.reduce((total, enrolment) => {
+    const directValue = parseNumber(
+      pickFirstValue(enrolment, [
+        'AMOUNTPAID',
+        'AmountPaid',
+        'amountPaid',
+        'cost',
+        'COST',
+        'Cost',
+        'FEE',
+        'AMOUNT',
+      ])
+    ) || 0;
+
+    // Also check nested activity payments if any
+    const activities = Array.isArray(enrolment.ACTIVITIES) ? enrolment.ACTIVITIES : [];
+    const activitySum = activities.reduce((acc, act) => {
+      const paid = parseNumber(
+        pickFirstValue(act, ['AMOUNTPAID', 'AmountPaid', 'amountPaid', 'cost', 'Cost'])
+      );
+      return acc + (paid || 0);
+    }, 0);
+
+    return total + directValue + activitySum;
+  }, 0);
 
   let invoiceRevenue = null;
 

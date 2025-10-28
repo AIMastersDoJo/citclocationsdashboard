@@ -3,7 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>CITC Locations Dashboard • Sample</title>
+    <link rel="icon" href="favicon.png" sizes="32x32">
+    <title>CITC Locations Dashboard</title>
     <style>
       :root {
         --citc-orange: #eb920c; /* brand accent */
@@ -16,16 +17,17 @@
         --card: #ffffff;
         --muted: #6b7280;
         --ok: #16a34a;
+        --full: #f00000;
       }
       * { box-sizing: border-box; }
       html, body { height: 100%; }
       body { margin: 0; min-height: 100vh; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: var(--ink); background: var(--bg); }
-      header { background: var(--grey-900); color: #fff; padding: 14px 20px; border-bottom: 4px solid var(--citc-orange); }
+      header { background: var(--grey-900); color: #fff; padding: 14px 20px; border-bottom: 4px solid var(--citc-orange); text-align: center;}
       header h1 { margin: 0; font-size: 18px; letter-spacing: 0.3px; }
       .container { width: 100%; max-width: none; margin: 0 auto; padding: 0 16px; }
-      .panel { background: var(--card); border: 1px solid var(--grey-300); border-radius: 12px; padding: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+      .panel { background: var(--card); border: 1px solid var(--grey-300); border-radius: 12px; padding: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-top: 20px; margin-bottom: 20px;}
       .controls { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; align-items: end; }
-      .controls .field { display: flex; flex-direction: column; gap: 6px; }
+      .controls .field { display: flex; flex-direction: initial; gap: 30px; }
       label { font-size: 12px; color: var(--muted); }
       input[type="date"], select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--grey-300); background: #fff; }
       .locs { grid-column: span 3; display: flex; gap: 14px; flex-wrap: wrap; }
@@ -36,13 +38,14 @@
       .btn:disabled { opacity: 0.7; cursor: not-allowed; }
       .meta { margin-top: 10px; color: var(--muted); font-size: 12px; }
       .layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
-      .filters { background: var(--card); border: 1px solid var(--grey-300); border-radius: 12px; padding: 12px; max-height: calc(100vh - 220px); overflow: auto; position: sticky; top: 12px; }
-      .filters h3 { margin: 6px 0 10px; font-size: 14px; color: var(--grey-900); }
+      .filters { background: var(--card); border: 1px solid var(--grey-300); border-radius: 12px; padding: 12px; max-height: calc(100vh - 230px); overflow: auto; position: sticky; top: 12px; }
+      .filters h3 .filters h3 {margin: 6px 0 10px;font-size: 14px;color: var(--grey-900);text-transform: uppercase;border-bottom: 1px solid var(--grey-300);padding-bottom: 5px;}
       .filters .group { margin-bottom: 12px; }
       .filters .cols { columns: 1; column-gap: 8px; }
       .filters label { display: block; break-inside: avoid; padding: 4px 2px; font-size: 12px; }
       .sections { margin-top: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
-      .section { background: var(--card); border: 1px solid var(--grey-300); border-radius: 12px; overflow: hidden; }
+      
+      .section {background: var(--card);border: 1px solid var(--grey-300);border-radius: 12px;overflow: auto;max-height: calc(100vh - 230px);}
       .section h2 { margin: 0; padding: 10px 14px; background: var(--grey-100); color: var(--grey-900); font-size: 14px; letter-spacing: 0.5px; text-transform: uppercase; border-bottom: 1px solid var(--grey-300); }
       .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; padding: 12px; }
       .card { background: #fff; border: 1px solid var(--grey-300); border-radius: 10px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
@@ -51,10 +54,10 @@
       th, td { border: 1px solid var(--grey-300); padding: 6px 8px; font-size: 12px; text-align: center; }
       thead th { background: var(--grey-100); font-weight: 700; color: var(--grey-900); }
       .price { color: var(--citc-orange); font-weight: 800; }
-      .full { color: var(--ok); font-weight: 800; }
+      .full { color: var(--full); font-weight: 800; }
       .muted { color: var(--muted); }
       .loading { margin-top: 10px; color: var(--muted); font-size: 13px; }
-      footer { text-align: center; color: #fff; font-size: 12px; margin: 0; padding: 10px 16px; background: var(--citc-orange); }
+      footer { text-align: center; color: #fff; font-size: 16px; margin: 0; padding: 10px 16px; background: var(--citc-orange); position: fixed;bottom: 0;width: 100%;}
       @media (max-width: 1600px) { .sections { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
       @media (max-width: 1200px) { .sections { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
       @media (max-width: 960px)  { .layout { grid-template-columns: 1fr; } .sections { grid-template-columns: 1fr; } .controls { grid-template-columns: 1fr 1fr; } .locs { grid-column: span 2; } }
@@ -108,7 +111,7 @@
   </head>
   <body>
     <header>
-      <h1>CITC Locations Dashboard — Sample UI</h1>
+      <h1>CITC Locations Dashboard</h1>
     </header>
 
     <div class="container">
@@ -119,7 +122,7 @@
             <label><input type="checkbox" class="loc" value="Mount Gambier" checked /> Mount Gambier</label>
             <label><input type="checkbox" class="loc" value="Port Pirie" checked /> Port Pirie</label>
             <label><input type="checkbox" class="loc" value="Whyalla" checked /> Whyalla</label>
-            <label><input type="checkbox" class="loc" value="Regency" checked /> Regency</label>
+            <label><input type="checkbox" class="loc" value="Regency Park" checked /> Regency Park</label>
           </div>
         </div>
         <div class="meta">
@@ -145,9 +148,7 @@
       </div>
     </div>
 
-    <footer>Colours sampled from citc.com.au · This is a local demo.</footer>
-
-    <script src="/config.js"></script>
+    <footer>citc.com.au</footer>
 
     <script>
 
@@ -165,7 +166,7 @@
         ];
         const price = 1795; // illustrative
         const coursesByLocation = {
-          'Regency': ['Dogging', 'White Card (General Construction Induction)', 'Forklift'],
+          'Regency Park': ['Dogging', 'White Card (General Construction Induction)', 'Forklift'],
           'Mount Gambier': ['Dogging', 'Forklift', 'CN Crane'],
           'Port Pirie': ['Dogging', 'Forklift', 'CN Crane'],
           'Whyalla': ['Dogging', 'White Card (General Construction Induction)', 'MPTV (Mobile Plant Ticket Verification / High Risk)']
@@ -201,7 +202,7 @@
       (function initDates(){
         const now = new Date();
         const start = new Date(now.getFullYear(), now.getMonth(), 1);
-        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        const end = new Date(now.getFullYear() + 1, now.getMonth(), 1);
         startDate = toISODate(start);
         endDate = toISODate(end);
       })();
@@ -213,46 +214,51 @@
         elHealth.textContent = 'Server: unavailable';
       });
       // Populate left column with course checkboxes
-      const COURSE_NAMES = [
-        'Dogging',
-        'Basic Rigging',
-        'Intermediate Rigging',
-        'Advanced Rigging',
-        'CV Crane',
-        'CN Crane',
-        'Slewing Crane',
-        'Bridge & Gantry Crane',
-        'C6 Crane',
-        'Basic Scaffold (A)',
-        'Intermediate Scaffold',
-        'Advanced Scaffold (A)',
-        'EWP (Elevated Work Platform)',
-        'Scissor Lift',
-        'Vertical Lift',
-        'Scissor & Boom Lift',
-        'Scissor & Vertical Lifts',
-        'Scissor, Boom & Vertical Lift (combined)',
-        'WSAH (Work Safely at Heights)',
-        'Forklift',
-        'Forklift (Entry Level)',
-        'Order Picker',
-        'White Card (General Construction Induction)',
-        'Confined Space',
-        'Confined Space (Combo)',
-        'Breathing Apparatus',
-        'Dangerous Goods',
-        'Load Restraint',
-        'Safety Leadership',
-        'Crystalline Silica Awareness',
-        'Excavator',
-        'FEL (Front End Loader)',
-        'Skid Steer',
-        'MPTV (Mobile Plant Ticket Verification / High Risk)',
-        'Cert IV in WHS'
-      ];
+      const COURSE_NAMES = {
+        'Advanced Rigging': 'Advanced Rigging',
+        'Advanced Scaffolding': 'Advanced Scaffolding',
+        'Basic Rigging': 'Basic Rigging',
+        'Basic Scaffolding': 'Basic Scaffolding',
+        'Breathing Apparatus': 'Breathing Apparatus',
+        'Bridge & Gantry Crane': 'Bridge & Gantry Crane',
+        'CV Crane': 'CV Crane',
+        'Certificate IV in WHS': 'Certificate IV in WHS',
+        'Confined Space with Gas Test': 'Confined Space with Gas Test',
+        'Dangerous Goods': 'Dangerous Goods',
+        'Dogging': 'Dogging',
+        'Elevating Work Platform (EWP)': 'Elevating Work Platform (EWP)',
+        'Enter & Work in Confined Spaces': 'Enter & Work in Confined Spaces',
+        'Enter & Work in Confined Spaces (Combo) or Confined Spaces (Combo)': 'Enter & Work in Confined Spaces (Combo) or Confined Spaces (Combo)',
+        'Excavator': 'Excavator',
+        'Forklift': 'Forklift',
+        'Forklift (Entry Level)': 'Forklift (Entry Level)',
+        'Front End Loader': 'Front End Loader',
+        'Intermediate Rigging': 'Intermediate Rigging',
+        'Intermediate Scaffolding': 'Intermediate Scaffolding',
+        'Multi Purpose Tool Vehicle': 'Multi Purpose Tool Vehicle',
+        'Non Slewing Mobile Crane': 'Non Slewing Mobile Crane',
+        'Order Picker': 'Order Picker',
+        'G&P Hoist': 'Personnel Hoist',
+        'Safety Leadership': 'Safety Leadership',
+        'Scissor Lift': 'Scissor Lift',
+        'Scissor Lift & Boom Lift': 'Scissor Lift & Boom Lift',
+        'Scissor Lift, Boom Lift & Vertical Lift': 'Scissor Lift, Boom Lift & Vertical Lift',
+        'Silicosis': 'Silicosis',
+        'Skid Steer Loader': 'Skid Steer Loader',
+        'Slewing Mobile Crane': 'Slewing Mobile Crane',
+        'White Card': 'White Card',
+        'Work Safely at Heights': 'Work Safely at Heights'
+      };
       const courseList = document.getElementById('courseList');
-      const SORTED_COURSES = [...COURSE_NAMES].sort((a,b)=> a.localeCompare(b, undefined, { sensitivity: 'base' }));
-      courseList.innerHTML = SORTED_COURSES.map(c => `<label class="course-item"><input type="checkbox" class="course" value="${escapeHtml(c)}" checked /> ${escapeHtml(c)}</label>`).join('');
+      const SORTED_COURSES = Object.entries(COURSE_NAMES)
+  .sort((a, b) => a[1].localeCompare(b[1], undefined, { sensitivity: 'base' }));
+      // Generate checkbox list
+courseList.innerHTML = SORTED_COURSES.map(([key, label]) =>
+      `<label class="course-item">
+        <input type="checkbox" class="course" value="${escapeHtml(key)}" /> ${escapeHtml(label)}
+      </label>`
+    ).join('');
+
 
       // Course search filtering (client-side on the checkbox list)
       function filterCourseList(term){
@@ -352,13 +358,16 @@
       load();
 
       function filterByCourses(map){
+        console.log('Filtering by courses', map);
         const selected = new Set(
           Array.from(document.querySelectorAll('.course:checked')).map(i =>
             i.value.trim().replace(/,+$/, '') // remove trailing commas
           )
         );
 
-        if (selected.size === 0) return map; // show all if none selected
+        /*if (selected.size === 0){
+          return map; // show all if none selected
+        } */
 
         const out = {};
         for (const [loc, rows] of Object.entries(map)) {
@@ -382,7 +391,7 @@
       function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
 
       function renderSections(map){
-        const ORDER = ['Regency', 'Mount Gambier', 'Port Pirie', 'Whyalla'];
+        const ORDER = ['Regency Park', 'Mount Gambier', 'Port Pirie', 'Whyalla'];
         const locations = ORDER.filter(loc => Object.prototype.hasOwnProperty.call(map, loc))
           .concat(Object.keys(map).filter(l => !ORDER.includes(l)));
         for (const loc of locations) {
@@ -419,7 +428,7 @@
           </tr>`;
         }).join('');
         el.innerHTML = `
-          <h3>${escapeHtml(category)}</h3>
+          <h3>${escapeHtml(category.replace(/,/g, ''))}</h3>
           <table>
             <thead>
               <tr>

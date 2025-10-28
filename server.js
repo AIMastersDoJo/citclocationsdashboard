@@ -185,7 +185,7 @@ async function fetchInstances(location, start, end) {
     axiosClient.post('/course/instance/search', body)
   );
 
-  // console.log('[API RESPONSE]', location, response.data); 
+  console.log('[API RESPONSE]', location, response.data); 
   return normaliseArrayPayload(response.data);
 }
 

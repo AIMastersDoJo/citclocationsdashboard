@@ -285,7 +285,7 @@
       // Generate checkbox list
 courseList.innerHTML = SORTED_COURSES.map(([key, label]) =>
       `<label class="course-item">
-        <input type="checkbox" class="course" value="${escapeHtml(key)}" /> ${escapeHtml(label)}
+        <input type="checkbox" class="course" value="${escapeHtml(label)}" /> ${escapeHtml(label)}
       </label>`
     ).join('');
 

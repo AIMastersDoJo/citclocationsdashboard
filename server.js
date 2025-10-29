@@ -204,8 +204,17 @@ async function buildCard(instance, revenueMode) {
 
   const { enrolments, enrolmentRevenue, invoiceRevenue } = await fetchEnrolmentInfo(instanceID, revenueMode);
 
-  const trainingCategory =
+  const displayNameMap = {
+    "G&P Hoist": "Personnel Hoist",
+    // add more mappings here if needed later
+  };
+
+  const trainingCategoryRaw =
     pickFirstString(instance, ['TRAININGCATEGORY', 'TRAINING_CATEGORY', 'ACTIVITYNAME', 'COURSETITLE', 'Name']) || 'Unknown';
+
+  const cleanName = trainingCategoryRaw.trim().replace(/[,;]+$/, '');
+
+  const trainingCategory = displayNameMap[cleanName] || cleanName;
 
   const startDateRaw = pickFirstString(instance, ['STARTDATE', 'START', 'START_DATE', 'STARTTIME']) || null;
   const endDateRaw = pickFirstString(instance, ['ENDDATE', 'FINISHDATE', 'END', 'END_DATE', 'FINISHTIME']) || null;

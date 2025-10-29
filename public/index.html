@@ -55,6 +55,7 @@
       thead th { background: var(--grey-100); font-weight: 700; color: var(--grey-900); }
       .price { color: var(--citc-orange); font-weight: 800; }
       .full { color: var(--full); font-weight: 800; }
+      .available { color: var(--ok);font-weight: 800; }
       .muted { color: var(--muted); }
       .loading { margin-top: 10px; color: var(--muted); font-size: 13px; }
       footer { text-align: center; color: #fff; font-size: 16px; margin: 0; padding: 10px 16px; background: var(--citc-orange); position: fixed;bottom: 0;width: 100%;}
@@ -107,6 +108,35 @@
         font-weight: 500;
         margin: 0;
       }
+
+      /* Course card title with cost */
+      .course-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 10px;
+        background: var(--grey-100);
+        border-bottom: 1px solid var(--grey-300);
+      }
+
+      .course-name {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--grey-900);
+      }
+      .course-cost {
+        font-weight: 700;
+        font-size: 14px;
+        color: var(--citc-orange);
+      }
+
+      .price-request {
+        color: var(--muted);
+        font-weight: 600;
+        font-style: italic;
+        font-size: 13px;
+      }
+
     </style>
   </head>
   <body>
@@ -418,30 +448,35 @@ courseList.innerHTML = SORTED_COURSES.map(([key, label]) =>
         const el = document.createElement('div');
         el.className = 'card';
         const sorted = [...rows].sort((a,b)=> new Date(a.startDate) - new Date(b.startDate));
+        const rawCost = Number(rows[0]?.cost || 0);
+        const costDisplay =
+          rawCost > 0
+            ? `$${rawCost.toLocaleString()}`
+            : '<span class="price-request">Price on Request</span>';
         const bodyRows = sorted.map(r => {
           const isFull = isFinite(r.numbers) && isFinite(r.capacity) && Number(r.numbers) >= Number(r.capacity) && Number(r.capacity) > 0;
+          const status = isFull
+            ? '<span class="full">Full</span>'
+            : '<span class="available">Available</span>';
           return `<tr>
             <td>${shortDate(r.startDate)}</td>
             <td>${shortDate(r.endDate)}</td>
-            <td>${isFull ? '<span class="full">Full</span>' : num(r.numbers)}</td>
-            <td>${num(r.capacity)}</td>
+            <td>${num(r.availableSeats)}</td>
+            <td>${status}</td>
           </tr>`;
         }).join('');
         el.innerHTML = `
-          <h3>${escapeHtml(category.replace(/,/g, ''))}</h3>
+          <h3 class="course-title">
+            <span class="course-name">${escapeHtml(category.replace(/,/g, ""))}</span>
+            <span class="course-cost">${costDisplay}</span>
+          </h3>
           <table>
             <thead>
               <tr>
-                <th>Full</th>
-                <th class="price">$1,795</th>
-                <th>CITB</th>
-                <th class="price">$895</th>
-              </tr>
-              <tr>
                 <th>Start</th>
                 <th>End</th>
-                <th>Numbers</th>
-                <th>Capacity</th>
+                <th>Available</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>

@@ -221,16 +221,23 @@ async function buildCard(instance, revenueMode) {
   const endDate = formatDate(endDateRaw);
 
   const numbers =
-    pickFirstNumber(instance, ['NUMBERS', 'NUMBER', 'ENROLMENTS', 'TOTALENROLMENTS', 'TOTALENROLLED']) ??
+    pickFirstNumber(instance, ['PARTICIPANTS', 'ENROLMENTS', 'TOTALENROLMENTS', 'TOTALENROLLED']) ??
     enrolments.length;
 
-  const capacity = pickFirstNumber(instance, ['CAPACITY', 'MAXPARTICIPANTS', 'MAXENROLMENTS', 'CLASSCAPACITY']) ?? null;
+  const capacity = pickFirstNumber(instance, ['MAXPARTICIPANTS', 'CAPACITY', 'MAXENROLMENTS', 'CLASSCAPACITY']) ?? null;
+
+  const availableSeats =
+    pickFirstNumber(instance, ['PARTICIPANTVACANCY', 'VACANCY', 'AVAILABLESEATS']) ??
+    (capacity != null && numbers != null ? capacity - numbers : null);
 
   const revenue =
     revenueMode === 'invoice'
       ? invoiceRevenue ?? enrolmentRevenue
       : enrolmentRevenue;
-
+  
+  const cost =
+    pickFirstNumber(instance, ['COST', 'cost', 'PRICE', 'Price', 'FEE', 'Fee']) ?? null;
+  
   return {
     id: instanceID,
     instanceID,
@@ -243,7 +250,9 @@ async function buildCard(instance, revenueMode) {
     numbers,
     booked: numbers,                        // alias for frontend
     capacity,
+    availableSeats,
     revenue,
+    cost,
   };
 }
 

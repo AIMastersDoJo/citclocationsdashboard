@@ -171,7 +171,7 @@
           <div class="field" style="margin-bottom:8px;">
             <input id="courseSearch" class="search" type="text" placeholder="Search courses..." />
           </div>
-          <label class="select-all" style="display:block; margin-bottom:6px;"><input type="checkbox" id="selectAllCourses" checked /> Select all courses</label>
+          <label class="select-all" style="display:block; margin-bottom:6px;"><input type="checkbox" id="selectAllCourses"/> Select all courses</label>
           <div id="courseList" class="cols"></div>
         </aside>
         <main id="sections" class="sections" aria-live="polite"></main>
@@ -186,7 +186,79 @@
       // When deploying to production, set these two variables before this script.
       const API_BASE = window.DASHBOARD_API_BASE || window.location.origin; // e.g., https://api.citc.com.au
       const DEMO_MODE = window.DASHBOARD_DEMO_MODE === true;
-      
+
+      // === helpers for normalization and dynamic sidebar ===
+      function normalizeForCompare(s){
+        return (s || '').toString().trim().replace(/^[,;\/\s]+|[,;\/\s]+$/g,'').replace(/\s+/g,' ');
+      }
+
+      // --- Smart aliasing + matching (keeps manual sidebar but matches messy API values) ---
+      const COURSE_ALIAS_MAP = {
+        "Scissor Lift": ["Scissor Lift", "Yellow Card", "Scissor Lift & Boom Lift", "Scissor Lift, Boom Lift & Vertical Lift", "scissor lift"],
+        "Elevating Work Platform (EWP)": ["EWP", "Elevating Work Platform", "Operate Elevating Work Platform", "Operate Elevating Work Platform - (Scissor Lift)"],
+        "Multi Purpose Tool Vehicle": ["MPTV", "Multi Purpose Tool Vehicle", "Multi Purpose Tool Vehicle (MPTV)", "M P T V"],
+        "Personnel Hoist": ["G&P Hoist", "Personnel Hoist", "G and P Hoist", "G & P Hoist", "G and P Hoist,", "G P Hoist", "gp hoist"]
+        // add more entries as you discover mismatches
+      };
+
+      function normalizeKey(s){
+        return (s || '').toString()
+          .trim()
+          .replace(/^[,;\/\s]+|[,;\/\s]+$/g,'')   // strip leading/trailing punctuation/spaces
+          .replace(/\s+/g,' ')                    // collapse multiple spaces
+          .replace(/[“”"']/g, '')                 // remove extra quotes
+          .toLowerCase();
+      }
+
+      function instanceMatchesLabel(instance, label){
+        const normLabel = normalizeKey(label);
+        const tCategory = normalizeKey(instance.trainingCategory || instance.TRAININGCATEGORY || instance.trainingCategoryDisplay || '');
+        const courseName = normalizeKey(instance.COURSENAME || instance.NAME || '');
+        const code = normalizeKey(instance.CODE || instance.code || '');
+        const combined = `${tCategory} ${courseName} ${code}`;
+
+        // 1) exact normalized match against category or coursename
+        if (tCategory && tCategory === normLabel) return true;
+        if (courseName && courseName === normLabel) return true;
+
+        // 2) substring match anywhere
+        if (combined.indexOf(normLabel) !== -1) return true;
+
+        // 3) check alias map entries for this label
+        const aliases = COURSE_ALIAS_MAP[label] || [];
+        for (let a of aliases){
+          if (!a) continue;
+          if (combined.indexOf(normalizeKey(a)) !== -1) return true;
+        }
+
+        // 4) code match fallback
+        if (code && code === normLabel) return true;
+
+        return false;
+      }
+
+      function labelForInstance(instance){
+        // prefer manual sidebar label if it matches
+        for (const label of Object.values(COURSE_NAMES)) {
+          if (instanceMatchesLabel(instance, label)) return label;
+        }
+        // fallback to trainingCategory or course name (as-is)
+        return instance.trainingCategory || instance.TRAININGCATEGORY || instance.COURSENAME || instance.NAME || 'Unknown';
+      }
+
+      // debug helper: run in console e.g. findInstancesForLabel('Scissor Lift')
+      function findInstancesForLabel(label){
+        if (!cachedData) { console.warn('No cachedData yet'); return []; }
+        const results = [];
+        Object.entries(cachedData).forEach(([loc, arr])=>{
+          (arr||[]).forEach(r=>{
+            if (instanceMatchesLabel(r, label)) results.push({ location: loc, instance: r });
+          });
+        });
+        console.log(`Found ${results.length} instances for "${label}"`);
+        return results;
+      }
+
       // Build a local sample dataset (kept as fallback if API unavailable)
       function buildLocalSample() {
         const sessionRows = [
@@ -218,6 +290,8 @@
         });
         return out;
       }
+
+      let cachedData = null; // cache for API response reuse
       let startDate = '';
       let endDate = '';
       const elSections = document.getElementById('sections');
@@ -228,11 +302,11 @@
       const elSelectAllCourses = document.getElementById('selectAllCourses');
       const elCourseSearch = document.getElementById('courseSearch');
 
-      // Default to current month
+      // Default to current month -> +1 year
       (function initDates(){
         const now = new Date();
         const start = new Date(now.getFullYear(), now.getMonth(), 1);
-        const end = new Date(now.getFullYear() + 2, now.getMonth(), 1);
+        const end = new Date(now.getFullYear() + 1, now.getMonth(), 1);
         startDate = toISODate(start);
         endDate = toISODate(end);
       })();
@@ -243,7 +317,8 @@
       }).catch(() => {
         elHealth.textContent = 'Server: unavailable';
       });
-      // Populate left column with course checkboxes
+
+      // Populate left column with course checkboxes (MANUAL list kept)
       const COURSE_NAMES = {
         'Advanced Rigging': 'Advanced Rigging',
         'Advanced Scaffolding': 'Advanced Scaffolding',
@@ -281,14 +356,13 @@
       };
       const courseList = document.getElementById('courseList');
       const SORTED_COURSES = Object.entries(COURSE_NAMES)
-  .sort((a, b) => a[1].localeCompare(b[1], undefined, { sensitivity: 'base' }));
-      // Generate checkbox list
-courseList.innerHTML = SORTED_COURSES.map(([key, label]) =>
-      `<label class="course-item">
-        <input type="checkbox" class="course" value="${escapeHtml(label)}" /> ${escapeHtml(label)}
-      </label>`
-    ).join('');
-
+        .sort((a, b) => a[1].localeCompare(b[1], undefined, { sensitivity: 'base' }));
+      // Generate checkbox list (manual)
+      courseList.innerHTML = SORTED_COURSES.map(([key, label]) =>
+        `<label class="course-item">
+          <input type="checkbox" class="course" value="${escapeHtml(label)}" /> ${escapeHtml(label)}
+        </label>`
+      ).join('');
 
       // Course search filtering (client-side on the checkbox list)
       function filterCourseList(term){
@@ -300,25 +374,27 @@ courseList.innerHTML = SORTED_COURSES.map(([key, label]) =>
         });
       }
 
-      // Load data automatically on change
+      // Load data automatically on change (with caching)
       const load = debounce(async () => {
         const loaderOverlay = document.getElementById("loadingOverlay");
         const start = startDate; const end = endDate;
         const locArray = Array.from(document.querySelectorAll('.loc:checked')).map(i => i.value);
         const locations = locArray.join('|');
+
         if (DEMO_MODE) {
           elCache.textContent = 'Demo mode enabled';
           const sample = buildLocalSample();
+          cachedData = sample;
           const filtered = filterByLocations(filterByCourses(sample), new Set(locArray));
           renderSections(filtered);
-          elLoading.classList.remove('visible');
+          if (loaderOverlay) loaderOverlay.classList.remove('visible');
           return;
         }
+
         if (loaderOverlay) loaderOverlay.classList.add('visible');
         elSections.innerHTML = '';
         elCache.textContent = '';
         try {
-          // Try live first
           const url = new URL(`${API_BASE}/api/sync`);
           url.searchParams.set('start', start);
           url.searchParams.set('end', end);
@@ -326,13 +402,16 @@ courseList.innerHTML = SORTED_COURSES.map(([key, label]) =>
           const res = await fetch(url.toString());
           let data = await res.json();
           if (!res.ok) throw new Error(data?.error || 'Request failed');
+
+          // cache and render
+          cachedData = data.data;
           elCache.textContent = data.cached ? 'Cached result' : 'Fresh result';
-          const filtered = filterByLocations(filterByCourses(data.data), new Set(locArray));
+          const filtered = filterByLocations(filterByCourses(cachedData), new Set(locArray));
           renderSections(filtered);
         } catch (e) {
-          // Fallback to local sample for preview
           elCache.textContent = 'Sample result (no API)';
           const sample = buildLocalSample();
+          cachedData = sample;
           const filtered = filterByLocations(filterByCourses(sample), new Set(locArray));
           renderSections(filtered);
         } finally {
@@ -387,23 +466,22 @@ courseList.innerHTML = SORTED_COURSES.map(([key, label]) =>
       // Initial load
       load();
 
+      // --- SMART filterByCourses: uses instanceMatchesLabel + labelForInstance ---
       function filterByCourses(map){
-        console.log('Filtering by courses', map);
-        const selected = new Set(
-          Array.from(document.querySelectorAll('.course:checked')).map(i =>
-            i.value.trim().replace(/,+$/, '') // remove trailing commas
-          )
-        );
-
-        /*if (selected.size === 0){
-          return map; // show all if none selected
-        } */
-
+        // selected labels from manual sidebar
+        const selectedLabels = Array.from(document.querySelectorAll('.course:checked')).map(i => i.value);
+         if (!selectedLabels || selectedLabels.length === 0) {
+          const empty = {};
+          for (const loc of Object.keys(map || {})) empty[loc] = [];
+          return empty;
+        }
         const out = {};
         for (const [loc, rows] of Object.entries(map)) {
-          out[loc] = rows.filter(r => {
-            const name = (r.trainingCategory || '').trim().replace(/,+$/, '');
-            return selected.has(name);
+          out[loc] = (rows || []).filter(r => {
+            for (const label of selectedLabels) {
+              if (instanceMatchesLabel ? instanceMatchesLabel(r, label) : (normalizeForCompare(r.trainingCategory || '') === normalizeForCompare(label))) return true;
+            }
+            return false;
           });
         }
         return out;
@@ -433,8 +511,8 @@ courseList.innerHTML = SORTED_COURSES.map(([key, label]) =>
           if (records.length === 0) {
             wrap.innerHTML = '<div class="card"><h3>No instances in range</h3></div>';
           } else {
-            // Group by trainingCategory
-            const groups = groupBy(records, r => r.trainingCategory || 'Unknown');
+            // Group by manual label (labelForInstance uses COURSE_NAMES + aliases)
+            const groups = groupBy(records, r => labelForInstance(r));
             Object.entries(groups)
               .sort((a,b)=> a[0].localeCompare(b[0], undefined, { sensitivity: 'base' }))
               .forEach(([category, rows]) => {
@@ -454,15 +532,22 @@ courseList.innerHTML = SORTED_COURSES.map(([key, label]) =>
             ? `$${rawCost.toLocaleString()}`
             : '<span class="price-request">Price on Request</span>';
         const bodyRows = sorted.map(r => {
-          const isFull = isFinite(r.numbers) && isFinite(r.capacity) && Number(r.numbers) >= Number(r.capacity) && Number(r.capacity) > 0;
-          const status = isFull
-            ? '<span class="full">Full</span>'
-            : '<span class="available">Available</span>';
+          const availableSeats =
+            typeof r.availableSeats === "number"
+              ? r.availableSeats
+              : r.capacity != null && r.numbers != null
+              ? r.capacity - r.numbers
+              : null;
+
+          const isFull = isFinite(availableSeats) && Number(availableSeats) <= 0 && Number(r.capacity) > 0;
+          const statusClass = isFull ? "full" : "available";
+          const statusText = isFull ? "Full" : "Available";
+
           return `<tr>
             <td>${shortDate(r.startDate)}</td>
             <td>${shortDate(r.endDate)}</td>
-            <td>${num(r.availableSeats)}</td>
-            <td>${status}</td>
+            <td>${num(availableSeats)}</td>
+            <td><span class="${statusClass}">${statusText}</span></td>
           </tr>`;
         }).join('');
         el.innerHTML = `

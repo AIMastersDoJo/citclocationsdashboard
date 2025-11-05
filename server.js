@@ -204,17 +204,11 @@ async function buildCard(instance, revenueMode) {
 
   const { enrolments, enrolmentRevenue, invoiceRevenue } = await fetchEnrolmentInfo(instanceID, revenueMode);
 
-  const displayNameMap = {
-    "G&P Hoist": "Personnel Hoist",
-    // add more mappings here if needed later
-  };
 
   const trainingCategoryRaw =
     pickFirstString(instance, ['TRAININGCATEGORY', 'TRAINING_CATEGORY', 'ACTIVITYNAME', 'COURSETITLE', 'Name']) || 'Unknown';
 
   const cleanName = trainingCategoryRaw.trim().replace(/[,;]+$/, '');
-
-  const trainingCategory = displayNameMap[cleanName] || cleanName;
 
   const startDateRaw = pickFirstString(instance, ['STARTDATE', 'START', 'START_DATE', 'STARTTIME']) || null;
   const endDateRaw = pickFirstString(instance, ['ENDDATE', 'FINISHDATE', 'END', 'END_DATE', 'FINISHTIME']) || null;
@@ -246,6 +240,51 @@ async function buildCard(instance, revenueMode) {
   
   const cost =
     pickFirstNumber(instance, ['COST', 'cost', 'PRICE', 'Price', 'FEE', 'Fee']) ?? null;
+
+  // ---------- normalize training/category display name ----------
+  function cleanNameRaw(s){
+      if (!s && s !== 0) return '';
+      return String(s)
+        .trim()
+        // canonicalise common variants
+        .replace(/\band\b/gi, '&')   // "G and P" -> "G & P"
+        .replace(/\s*&\s*/g, '&')    // collapse spaces around &
+        // remove trailing punctuation and stray characters
+        .replace(/[.,;\/\s]+$/g, '')
+        // collapse multiple spaces
+        .replace(/\s+/g, ' ')
+        .replace(/[“”"']/g, '')      // remove quotes
+        .toLowerCase();
+    }
+
+  // manual alias map for known messy values (extend as needed)
+  const displayNameMapRaw= {
+    "G&P Hoist": "Personnel Hoist",
+    "Yellow Card": "Scissor Lift",
+    "EWP": "Elevating Work Platform (EWP)",
+    "MPTV": "Multi Purpose Tool Vehicle"
+  };
+
+  // build cleaned-key map so "G & P Hoist" or "G and P Hoist," match too
+ const displayNameMap = {};
+  Object.entries(displayNameMapRaw).forEach(([k, v]) => {
+    displayNameMap[ cleanNameRaw(k) ] = v;
+  });
+
+  // prefer human COURSENAME when available, otherwise TRAININGCATEGORY
+  const rawCourseName = cleanNameRaw(pickFirstString(instance, ['COURSENAME','NAME','COURSE_NAME']) || '');
+  const rawCategory   = cleanNameRaw(pickFirstString(instance, ['TRAININGCATEGORY','TRAINING_CATEGORY','ACTIVITYNAME','COURSETITLE']) || '');
+
+  // choose best label then map aliases
+  let trainingCategoryKey = rawCourseName || rawCategory || 'unknown';
+  const mapped = displayNameMap[ trainingCategoryKey ] || displayNameMap[ rawCourseName ] || displayNameMap[ rawCategory ];
+  const trainingCategory = mapped || (trainingCategoryKey === 'unknown' ? 'Unknown' : trainingCategoryKey);
+
+    instance.trainingCategory = trainingCategory;
+
+  // attach to instance object (if you return a constructed object, include trainingCategory there)
+  // e.g. later in your return: trainingCategory: trainingCategory,
+
   
   return {
     id: instanceID,

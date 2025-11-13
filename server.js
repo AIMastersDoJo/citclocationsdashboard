@@ -20,7 +20,7 @@ const PORT = Number(PORT_ENV) || 3001;
 const CONCURRENCY_LIMIT = Math.max(1, Number(CONCURRENCY_LIMIT_ENV) || 8);
 const CACHE_TTL_SECONDS = Math.max(1, Number(CACHE_TTL_SECONDS_ENV) || 25);
 
-const DEFAULT_LOCATIONS = ['Mount Gambier', 'Port Pirie', 'Whyalla', 'Regency'];
+const DEFAULT_LOCATIONS = ['Mount Gambier', 'Port Pirie', 'Whyalla', 'Regency Park'];
 const VALID_REVENUE_MODES = new Set(['enrolment', 'invoice']);
 
 if (!AXC_BASE || !AXC_API_TOKEN || !AXC_WS_TOKEN) {
@@ -113,6 +113,7 @@ app.get('/api/sync', async (req, res) => {
     const data = {};
     for (const location of locations) {
       const instances = await fetchInstances(location, start, end);
+      console.log(`[sync] fetched ${instances.length} instances for location: ${location}`);
       const cards = await Promise.all(
         instances.map((instance) =>
           buildCard(instance, revenueMode).catch((error) => {
@@ -246,46 +247,49 @@ async function buildCard(instance, revenueMode) {
       if (!s && s !== 0) return '';
       return String(s)
         .trim()
-        // canonicalise common variants
         .replace(/\band\b/gi, '&')   // "G and P" -> "G & P"
-        .replace(/\s*&\s*/g, '&')    // collapse spaces around &
-        // remove trailing punctuation and stray characters
+        .replace(/\s*&\s*/g, '&')  
         .replace(/[.,;\/\s]+$/g, '')
-        // collapse multiple spaces
         .replace(/\s+/g, ' ')
-        .replace(/[“”"']/g, '')      // remove quotes
+        .replace(/[“”"']/g, '')    
         .toLowerCase();
     }
 
-  // manual alias map for known messy values (extend as needed)
   const displayNameMapRaw= {
     "G&P Hoist": "Personnel Hoist",
-    "Yellow Card": "Scissor Lift",
     "EWP": "Elevating Work Platform (EWP)",
-    "MPTV": "Multi Purpose Tool Vehicle"
+    "Yellow Card": "Scissor Lift",
+    "MPTV": "Multi Purpose Tool Vehicle",
+    "Multi Purpose Tool Vehicle": "Multi Purpose Tool Vehicle",
+    "Scissor Lift & Boom Lift": "Scissor Lift & Boom Lift",
+    "Scissor Lift, Boom Lift & Vertical Lift": "Scissor Lift, Boom Lift & Vertical Lift",
+    "Basic Rigging": "Basic Rigging",
+    "Silicosis Awareness": "Silicosis",
+    "Silicosis": "Silicosis",
+    "Forklift Entry": "Forklift (Entry Level)",
+    "Forklift (Entry)": "Forklift (Entry Level)",
+    "Forklift (Entry Level)": "Forklift (Entry Level)",
+    "Enter & Work in Confined Spaces (Combo) or Confined Spaces (Combo)": "Enter & Work in Confined Spaces (Combo)",
+    "Confined Spaces (Combo)": "Enter & Work in Confined Spaces (Combo)"
   };
 
-  // build cleaned-key map so "G & P Hoist" or "G and P Hoist," match too
+  // cleaned key map 
  const displayNameMap = {};
   Object.entries(displayNameMapRaw).forEach(([k, v]) => {
     displayNameMap[ cleanNameRaw(k) ] = v;
   });
 
-  // prefer human COURSENAME when available, otherwise TRAININGCATEGORY
+  // source strings from API
   const rawCourseName = cleanNameRaw(pickFirstString(instance, ['COURSENAME','NAME','COURSE_NAME']) || '');
   const rawCategory   = cleanNameRaw(pickFirstString(instance, ['TRAININGCATEGORY','TRAINING_CATEGORY','ACTIVITYNAME','COURSETITLE']) || '');
 
-  // choose best label then map aliases
+  // prefer course name then category; map if we have a friendly name
   let trainingCategoryKey = rawCourseName || rawCategory || 'unknown';
-  const mapped = displayNameMap[ trainingCategoryKey ] || displayNameMap[ rawCourseName ] || displayNameMap[ rawCategory ];
+  const mapped = displayNameMap[trainingCategoryKey] || displayNameMap[rawCourseName] || displayNameMap[rawCategory];
   const trainingCategory = mapped || (trainingCategoryKey === 'unknown' ? 'Unknown' : trainingCategoryKey);
 
-    instance.trainingCategory = trainingCategory;
+  instance.trainingCategory = trainingCategory;
 
-  // attach to instance object (if you return a constructed object, include trainingCategory there)
-  // e.g. later in your return: trainingCategory: trainingCategory,
-
-  
   return {
     id: instanceID,
     instanceID,

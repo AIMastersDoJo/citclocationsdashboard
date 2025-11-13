@@ -195,10 +195,45 @@
       // --- Smart aliasing + matching (keeps manual sidebar but matches messy API values) ---
       const COURSE_ALIAS_MAP = {
         "Scissor Lift": ["Scissor Lift", "Yellow Card", "Scissor Lift & Boom Lift", "Scissor Lift, Boom Lift & Vertical Lift", "scissor lift"],
-        "Elevating Work Platform (EWP)": ["EWP", "Elevating Work Platform", "Operate Elevating Work Platform", "Operate Elevating Work Platform - (Scissor Lift)"],
-        "Multi Purpose Tool Vehicle": ["MPTV", "Multi Purpose Tool Vehicle", "Multi Purpose Tool Vehicle (MPTV)", "M P T V"],
-        "Personnel Hoist": ["G&P Hoist", "Personnel Hoist", "G and P Hoist", "G & P Hoist", "G and P Hoist,", "G P Hoist", "gp hoist"]
+        "Scissor Lift & Boom Lift": ["Scissor Lift & Boom Lift", "Scissor Lift & Boom Lift (Combo)"],
+        "Elevating Work Platform (EWP)": ["EWP", "Elevating Work Platform", "Operate Elevating Work Platform"],
+        "Multi Purpose Tool Vehicle": ["MPTV", "Multi Purpose Tool Vehicle", "Multi Purpose Tool Vehicle (MPTV)"],
+        "Personnel Hoist": ["G&P Hoist", "G & P Hoist", "G and P Hoist", "Personnel Hoist"],
+        "Basic Rigging": ["basic rigging", "licence to perform rigging basic level", "licence to perform rigging intermediate level"],
+        "Advanced Rigging": ["licence to perform rigging advanced level", "licence to perform rigging advanced level"],
+        "Basic Scaffolding": ["licence to erect alter&dismantle scaffolding basic level", "licence to erect alter & dismantle scaffolding basic level", "basic scaffolding"],
+        "Intermediate Scaffolding": ["licence to erect alter&dismantle scaffolding intermediate level", "licence to erect alter & dismantle scaffolding intermediate level", "intermediate scaffolding"],
+        "Silicosis": ["course in crystalline silica exposure prevention", "Silicosis Awareness", "Silicosis"],
+        "Forklift": ["licence to operate a forklift truck", "licence to operate a forklift truck (inexperienced/entry level)", "licence to operate a forklift truck (inexperienced/entry level)"],
+        "Forklift (Entry Level)": ["licence to operate a forklift truck (inexperienced/entry level)", "forklift entry", "forklift (entry)"],
+        "Excavator": ["conduct civil construction excavator operations", "Excavator"],
+        "Skid Steer Loader": ["conduct civil construction skid steer loader operations", "Skid Steer Loader"],
+        "Front End Loader": ["conduct civil construction wheeled front end loader operations", "Front End Loader"],
+        "Enter & Work in Confined Spaces (Combo)": ["enter&work in confined spaces combination", "Confined Spaces (Combo)", "Enter & Work in Confined Spaces (Combo)"],
+        "Dogging": ["licence to perform dogging", "Dogging"],
+        "White Card": ["prepare to work safely in the construction industry - (white card)", "White Card", "prepare to work safely in the construction industry"],
+        "Basic Scaffolding": ["licence to erect alter&dismantle scaffolding basic level","licence to erect, alter&dismantle scaffolding basic level","licence to erect alter & dismantle scaffolding basic level","scaffolding basic level"],
+        "Intermediate Scaffolding": ["licence to erect alter&dismantle scaffolding intermediate level","licence to erect, alter&dismantle scaffolding intermediate level","licence to erect alter & dismantle scaffolding intermediate level","scaffolding intermediate level"],
         // add more entries as you discover mismatches
+      };
+
+       // exact alias map for long API canonical strings -> manual label
+      const EXACT_ALIAS = {
+        'licence to perform rigging advanced level': 'Advanced Rigging',
+        'licence to perform rigging intermediate level': 'Intermediate Rigging',
+        'licence to operate a bridge&gantry crane': 'Bridge & Gantry Crane',
+        'licence to operate a slewing mobile crane (up to 60 tonnes)': 'Slewing Mobile Crane',
+        'licence to operate a non-slewing mobile crane (greater than 3 tonnes capacity)': 'Non Slewing Mobile Crane',
+        'licence to operate a vehicle loading crane (capacity 10 metre tonnes&above)': 'CV Crane',
+        'licence to operate a forklift truck (inexperienced/entry level)': 'Forklift (Entry Level)',
+        'licence to operate a forklift truck': 'Forklift',
+        'course in crystalline silica exposure prevention': 'Silicosis',
+        'enter&work in confined spaces combination': 'Enter & Work in Confined Spaces (Combo)',
+        'licence to erect alter&dismantle scaffolding basic level': 'Basic Scaffolding',
+        'licence to erect alter&dismantle scaffolding intermediate level': 'Intermediate Scaffolding',
+        'licence to erect, alter&dismantle scaffolding basic level': 'Basic Scaffolding',
+        'licence to erect, alter&dismantle scaffolding intermediate level': 'Intermediate Scaffolding',
+        // add more mapping entries you find in the `cats` list
       };
 
       function normalizeKey(s){
@@ -210,40 +245,141 @@
           .toLowerCase();
       }
 
+      // safe regex escape helper
+      function escapeForRegex(s){
+        return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+
+      // build a whole-word regex for the label (safe)
+      function wordRegexFor(s){
+        if (!s) return null;
+        const safe = escapeForRegex(s)
+          .replace(/\\&|\\sand\\s/gi, '(?:&|and)'); // treat & and "and" similarly
+        const tokens = safe.split(/\s+/).filter(Boolean).map(t => `\\b${t}\\b`);
+        if (tokens.length === 0) return null;
+        return new RegExp(tokens.join('.*'), 'i');
+      }
+
       function instanceMatchesLabel(instance, label){
         const normLabel = normalizeKey(label);
-        const tCategory = normalizeKey(instance.trainingCategory || instance.TRAININGCATEGORY || instance.trainingCategoryDisplay || '');
+        const tCategory = normalizeKey(instance.trainingCategory || instance.trainingCategoryName || instance.TRAININGCATEGORY || instance.trainingCategoryDisplay || '');
         const courseName = normalizeKey(instance.COURSENAME || instance.NAME || '');
         const code = normalizeKey(instance.CODE || instance.code || '');
         const combined = `${tCategory} ${courseName} ${code}`;
 
-        // 1) exact normalized match against category or coursename
+        // highest priority: exact server raw -> manual label mapping
+        if (EXACT_ALIAS[tCategory] && normalizeKey(EXACT_ALIAS[tCategory]) === normLabel) return true;
+
+        // 1) exact normalized match against server fields
         if (tCategory && tCategory === normLabel) return true;
         if (courseName && courseName === normLabel) return true;
 
-        // 2) substring match anywhere
-        if (combined.indexOf(normLabel) !== -1) return true;
-
-        // 3) check alias map entries for this label
+        // 2) explicit alias match
         const aliases = COURSE_ALIAS_MAP[label] || [];
-        for (let a of aliases){
+        for (const a of aliases){
           if (!a) continue;
-          if (combined.indexOf(normalizeKey(a)) !== -1) return true;
+          const na = normalizeKey(a);
+          if (na === tCategory || na === courseName || combined.indexOf(na) !== -1) return true;
         }
 
-        // 4) code match fallback
-        if (code && code === normLabel) return true;
+        // 3) whole-word label regex (safe)
+        const r = wordRegexFor(label);
+        if (r && (r.test(tCategory) || r.test(courseName) || r.test(combined))) return true;
+
+        // 4) conservative token matching
+        const tokens = normLabel.split(/\s+/).filter(t => t.length > 2);
+        if (tokens.length > 0) {
+          let present = 0;
+          for (const tok of tokens) {
+            try {
+              const rx = new RegExp(`\\b${escapeForRegex(tok)}\\b`, 'i');
+              if (rx.test(combined)) present++;
+            } catch (e){
+              // ignore token if it can't be compiled
+            }
+          }
+          // require ALL tokens for short labels, higher fraction for long labels
+          if (tokens.length <= 2) {
+            if (present === tokens.length) return true;
+          } else {
+            if (present >= Math.ceil(tokens.length * 0.7)) return true; // 70% threshold
+          }
+        }
+
+        // 5) useful code heuristics for families (special cases)
+        if (code && normLabel.includes('forklift') && code.indexOf('CPCC') !== -1) return true;
 
         return false;
       }
 
       function labelForInstance(instance){
-        // prefer manual sidebar label if it matches
-        for (const label of Object.values(COURSE_NAMES)) {
-          if (instanceMatchesLabel(instance, label)) return label;
+        // prefer server-normalized canonical values first (if they exactly match one of COURSE_NAMES)
+        const serverRaw = normalizeKey(instance.trainingCategory || instance.trainingCategoryName || instance.TRAININGCATEGORY || '');
+        for (const label of Object.values(COURSE_NAMES || {})) {
+          if (serverRaw && serverRaw === normalizeKey(label)) return label;
         }
-        // fallback to trainingCategory or course name (as-is)
-        return instance.trainingCategory || instance.TRAININGCATEGORY || instance.COURSENAME || instance.NAME || 'Unknown';
+
+        // exact alias override
+        if (EXACT_ALIAS[serverRaw]) return EXACT_ALIAS[serverRaw];
+
+        // scoring among manual labels
+        const candidates = Object.values(COURSE_NAMES || {});
+        let best = null;
+        let bestScore = -1;
+
+        const courseName = normalizeKey(instance.COURSENAME || instance.NAME || '');
+        const combined = `${serverRaw} ${courseName}`;
+
+        for (const label of candidates){
+          let score = 0;
+          const na = normalizeKey(label);
+
+          // strong exact matches
+          if (serverRaw && serverRaw === na) score += 200;
+          if (courseName && courseName === na) score += 150;
+
+          // alias exact
+          const aliases = COURSE_ALIAS_MAP[label] || [];
+          for (const a of aliases){
+            const aa = normalizeKey(a);
+            if (aa === serverRaw || aa === courseName) score += 80;
+            if (combined.indexOf(aa) !== -1) score += 30;
+          }
+
+          // whole-label regex match
+          try {
+            const r = wordRegexFor(label);
+            if (r && (r.test(serverRaw) || r.test(courseName) || r.test(combined))) score += 60;
+          } catch (e) {}
+
+          // conservative token boost
+          const tokens = na.split(/\s+/).filter(t => t.length > 2);
+          if (tokens.length > 0) {
+            let present = 0;
+            for (const tok of tokens) {
+              try {
+                const rx = new RegExp(`\\b${escapeForRegex(tok)}\\b`, 'i');
+                if (rx.test(combined)) present++;
+              } catch (e) {}
+            }
+            if (tokens.length <= 2 && present === tokens.length) score += 50;
+            if (tokens.length > 2 && present >= Math.ceil(tokens.length * 0.7)) score += 25;
+          }
+
+          // small boosts for distinctive keywords
+          if (/ewp|mptv|scissor|hoist|silicosis/.test(na) && /ewp|mptv|scissor|hoist|silicosis/.test(combined)) score += 8;
+
+          if (score > bestScore){
+            bestScore = score;
+            best = label;
+          }
+        }
+
+        // require higher confidence
+        if (bestScore >= 80) return best;
+
+        // fallback to server name or raw course name
+        return instance.trainingCategory || instance.trainingCategoryName || instance.TRAININGCATEGORY || instance.COURSENAME || instance.NAME || 'Unknown';
       }
 
       // debug helper: run in console e.g. findInstancesForLabel('Scissor Lift')
@@ -333,7 +469,7 @@
         'Dogging': 'Dogging',
         'Elevating Work Platform (EWP)': 'Elevating Work Platform (EWP)',
         'Enter & Work in Confined Spaces': 'Enter & Work in Confined Spaces',
-        'Enter & Work in Confined Spaces (Combo) or Confined Spaces (Combo)': 'Enter & Work in Confined Spaces (Combo) or Confined Spaces (Combo)',
+        'Enter & Work in Confined Spaces (Combo) or Confined Spaces (Combo)': 'Enter & Work in Confined Spaces (Combo)',
         'Excavator': 'Excavator',
         'Forklift': 'Forklift',
         'Forklift (Entry Level)': 'Forklift (Entry Level)',

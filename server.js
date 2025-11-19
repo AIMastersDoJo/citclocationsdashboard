@@ -114,6 +114,7 @@ app.get('/api/sync', async (req, res) => {
     for (const location of locations) {
       const instances = await fetchInstances(location, start, end);
       console.log(`[sync] fetched ${instances.length} instances for location: ${location}`);
+      
       const cards = await Promise.all(
         instances.map((instance) =>
           buildCard(instance, revenueMode).catch((error) => {
@@ -179,14 +180,19 @@ async function fetchInstances(location, start, end) {
     startDate_min: start,
     startDate_max: end,
     purgeCache: true,
-    displayLength: 200,
+    displayLength: 10000,
   });
 
   const response = await requestWithRetry(() =>
     axiosClient.post('/course/instance/search', body)
   );
 
-  console.log('[API RESPONSE]', location, response.data); 
+  //console.log('[API RESPONSE]', location, response.data); 
+  /*const fs = require('fs');
+
+  fs.appendFile('sync.log', `Location: ${location} \n ${JSON.stringify(response.data)} \n\n`, (err) => {
+      if (err) throw err;
+  });*/
   return normaliseArrayPayload(response.data);
 }
 
@@ -259,6 +265,8 @@ async function buildCard(instance, revenueMode) {
     "G&P Hoist": "Personnel Hoist",
     "EWP": "Elevating Work Platform (EWP)",
     "Yellow Card": "Scissor Lift",
+    //"Yellow Card": "Scissor Lift & Boom Lift",
+    //"Yellow Card": "Scissor Lift, Boom Lift & Vertical Lift",
     "MPTV": "Multi Purpose Tool Vehicle",
     "Multi Purpose Tool Vehicle": "Multi Purpose Tool Vehicle",
     "Scissor Lift & Boom Lift": "Scissor Lift & Boom Lift",
@@ -289,7 +297,7 @@ async function buildCard(instance, revenueMode) {
   const trainingCategory = mapped || (trainingCategoryKey === 'unknown' ? 'Unknown' : trainingCategoryKey);
 
   instance.trainingCategory = trainingCategory;
-
+  
   return {
     id: instanceID,
     instanceID,
@@ -305,6 +313,8 @@ async function buildCard(instance, revenueMode) {
     availableSeats,
     revenue,
     cost,
+    CourseName: rawCourseName, 
+    Category: rawCategory, 
   };
 }
 

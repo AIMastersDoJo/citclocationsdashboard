@@ -194,8 +194,9 @@
 
       // --- Smart aliasing + matching (keeps manual sidebar but matches messy API values) ---
       const COURSE_ALIAS_MAP = {
-        "Scissor Lift": ["Scissor Lift", "Yellow Card", "Scissor Lift & Boom Lift", "Scissor Lift, Boom Lift & Vertical Lift", "scissor lift"],
-        "Scissor Lift & Boom Lift": ["Scissor Lift & Boom Lift", "Scissor Lift & Boom Lift (Combo)"],
+        "Scissor Lift": ["operate elevating work platform - (scissor lift)"],
+        "Scissor Lift & Boom Lift": ["operate elevating work platform - (scissor lift&boom lift)"],
+        "Scissor Lift, Boom Lift & Vertical Lift": ["operate elevating work platform - (scissor lift, boom lift&vertical lift)"],
         "Elevating Work Platform (EWP)": ["EWP", "Elevating Work Platform", "Operate Elevating Work Platform"],
         "Multi Purpose Tool Vehicle": ["MPTV", "Multi Purpose Tool Vehicle", "Multi Purpose Tool Vehicle (MPTV)"],
         "Personnel Hoist": ["G&P Hoist", "G & P Hoist", "G and P Hoist", "Personnel Hoist"],
@@ -263,7 +264,7 @@
       function instanceMatchesLabel(instance, label){
         const normLabel = normalizeKey(label);
         const tCategory = normalizeKey(instance.trainingCategory || instance.trainingCategoryName || instance.TRAININGCATEGORY || instance.trainingCategoryDisplay || '');
-        const courseName = normalizeKey(instance.COURSENAME || instance.NAME || '');
+        const courseName = normalizeKey(instance.CourseName || instance.NAME || '');
         const code = normalizeKey(instance.CODE || instance.code || '');
         const combined = `${tCategory} ${courseName} ${code}`;
 
@@ -273,7 +274,7 @@
         // 1) exact normalized match against server fields
         if (tCategory && tCategory === normLabel) return true;
         if (courseName && courseName === normLabel) return true;
-
+        
         // 2) explicit alias match
         const aliases = COURSE_ALIAS_MAP[label] || [];
         for (const a of aliases){
@@ -282,10 +283,11 @@
           if (na === tCategory || na === courseName || combined.indexOf(na) !== -1) return true;
         }
 
+        /*
         // 3) whole-word label regex (safe)
         const r = wordRegexFor(label);
         if (r && (r.test(tCategory) || r.test(courseName) || r.test(combined))) return true;
-
+        
         // 4) conservative token matching
         const tokens = normLabel.split(/\s+/).filter(t => t.length > 2);
         if (tokens.length > 0) {
@@ -305,10 +307,10 @@
             if (present >= Math.ceil(tokens.length * 0.7)) return true; // 70% threshold
           }
         }
-
+        */
         // 5) useful code heuristics for families (special cases)
         if (code && normLabel.includes('forklift') && code.indexOf('CPCC') !== -1) return true;
-
+       
         return false;
       }
 
@@ -613,8 +615,11 @@
         }
         const out = {};
         for (const [loc, rows] of Object.entries(map)) {
+          console.log(rows);
           out[loc] = (rows || []).filter(r => {
+            console.log(r);
             for (const label of selectedLabels) {
+              console.log(selectedLabels);
               if (instanceMatchesLabel ? instanceMatchesLabel(r, label) : (normalizeForCompare(r.trainingCategory || '') === normalizeForCompare(label))) return true;
             }
             return false;
@@ -658,11 +663,12 @@
           elSections.appendChild(section);
         }
       }
+      
       function courseCard(category, rows){
         const el = document.createElement('div');
         el.className = 'card';
         const sorted = [...rows].sort((a,b)=> new Date(a.startDate) - new Date(b.startDate));
-        const rawCost = Number(rows[0]?.cost || 0);
+        const rawCost = Number(rows[0]?.cost || rows[1]?.cost || rows[2]?.cost || rows[3]?.cost || rows[4]?.cost || 0);
         const costDisplay =
           rawCost > 0
             ? `$${rawCost.toLocaleString()}`

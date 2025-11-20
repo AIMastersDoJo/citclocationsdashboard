@@ -272,9 +272,12 @@
         if (EXACT_ALIAS[tCategory] && normalizeKey(EXACT_ALIAS[tCategory]) === normLabel) return true;
 
         // 1) exact normalized match against server fields
+        console.log("normLabel", normLabel);
+        console.log("tCategory", tCategory);
         if (tCategory && tCategory === normLabel) return true;
         if (courseName && courseName === normLabel) return true;
-        
+
+        /*
         // 2) explicit alias match
         const aliases = COURSE_ALIAS_MAP[label] || [];
         for (const a of aliases){
@@ -283,7 +286,7 @@
           if (na === tCategory || na === courseName || combined.indexOf(na) !== -1) return true;
         }
 
-        /*
+        
         // 3) whole-word label regex (safe)
         const r = wordRegexFor(label);
         if (r && (r.test(tCategory) || r.test(courseName) || r.test(combined))) return true;

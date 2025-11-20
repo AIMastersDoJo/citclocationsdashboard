@@ -188,11 +188,11 @@ async function fetchInstances(location, start, end) {
   );
 
   //console.log('[API RESPONSE]', location, response.data); 
-  /*const fs = require('fs');
+  const fs = require('fs');
 
   fs.appendFile('sync.log', `Location: ${location} \n ${JSON.stringify(response.data)} \n\n`, (err) => {
       if (err) throw err;
-  });*/
+  });
   return normaliseArrayPayload(response.data);
 }
 
@@ -264,13 +264,11 @@ async function buildCard(instance, revenueMode) {
   const displayNameMapRaw= {
     "G&P Hoist": "Personnel Hoist",
     "EWP": "Elevating Work Platform (EWP)",
-    "Yellow Card": "Scissor Lift",
-    //"Yellow Card": "Scissor Lift & Boom Lift",
-    //"Yellow Card": "Scissor Lift, Boom Lift & Vertical Lift",
+    "operate elevating work platform - (scissor lift)": "Scissor Lift",
+    "operate elevating work platform - (scissor lift&boom lift)": "Scissor Lift & Boom Lift",
+    "operate elevating work platform - (scissor lift, boom lift&vertical lift)": "Scissor Lift, Boom Lift & Vertical Lift",
     "MPTV": "Multi Purpose Tool Vehicle",
     "Multi Purpose Tool Vehicle": "Multi Purpose Tool Vehicle",
-    "Scissor Lift & Boom Lift": "Scissor Lift & Boom Lift",
-    "Scissor Lift, Boom Lift & Vertical Lift": "Scissor Lift, Boom Lift & Vertical Lift",
     "Basic Rigging": "Basic Rigging",
     "Silicosis Awareness": "Silicosis",
     "Silicosis": "Silicosis",
@@ -278,7 +276,9 @@ async function buildCard(instance, revenueMode) {
     "Forklift (Entry)": "Forklift (Entry Level)",
     "Forklift (Entry Level)": "Forklift (Entry Level)",
     "Enter & Work in Confined Spaces (Combo) or Confined Spaces (Combo)": "Enter & Work in Confined Spaces (Combo)",
-    "Confined Spaces (Combo)": "Enter & Work in Confined Spaces (Combo)"
+    "Confined Spaces (Combo)": "Enter & Work in Confined Spaces (Combo)",
+    "Dogging": "Dogging",
+    "Excavator": "Excavator",
   };
 
   // cleaned key map 

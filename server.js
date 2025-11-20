@@ -188,11 +188,11 @@ async function fetchInstances(location, start, end) {
   );
 
   //console.log('[API RESPONSE]', location, response.data); 
-  const fs = require('fs');
+  /*const fs = require('fs');
 
   fs.appendFile('sync.log', `Location: ${location} \n ${JSON.stringify(response.data)} \n\n`, (err) => {
       if (err) throw err;
-  });
+  });*/
   return normaliseArrayPayload(response.data);
 }
 

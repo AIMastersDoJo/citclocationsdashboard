@@ -87,7 +87,7 @@ app.get('/api/sync', async (req, res) => {
 
   // If demo mode, return mock data in the same shape
   if (useDemo) {
-    console.log('[sync] demo mode', { start, end, revenueMode, locations });
+    //console.log('[sync] demo mode', { start, end, revenueMode, locations });
     const data = buildDemoData(start, end, locations);
     return res.json({
       cached: false,
@@ -96,7 +96,7 @@ app.get('/api/sync', async (req, res) => {
       data,
     });
   }
-  console.log('[sync] live mode', { start, end, revenueMode, locations });
+  //console.log('[sync] live mode', { start, end, revenueMode, locations });
   const cacheKey = buildCacheKey(start, end, locations, revenueMode);
   const cached = getFromCache(cacheKey);
 
@@ -113,7 +113,7 @@ app.get('/api/sync', async (req, res) => {
     const data = {};
     for (const location of locations) {
       const instances = await fetchInstances(location, start, end);
-      console.log(`[sync] fetched ${instances.length} instances for location: ${location}`);
+      //console.log(`[sync] fetched ${instances.length} instances for location: ${location}`);
       
       const cards = await Promise.all(
         instances.map((instance) =>
@@ -143,7 +143,7 @@ app.get('/api/sync', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`CITC proxy listening on port ${PORT}`);
+  //console.log(`CITC proxy listening on port ${PORT}`);
 });
 
 function buildCacheKey(start, end, locations, revenueMode) {
@@ -748,7 +748,7 @@ async function fetchInstanceUDFs(instanceID) {
       })
     )
   );
-  console.log('[UDF RESPONSE]', instanceID, response.data);
+  //console.log('[UDF RESPONSE]', instanceID, response.data);
   return extractUdfsFromDetail(response.data);
 }
 
@@ -802,7 +802,7 @@ function extractUdfsFromDetail(detail) {
       }
     }
   }
-  console.log('[results]', results);
+  //console.log('[results]', results);
   return results;
 }
 

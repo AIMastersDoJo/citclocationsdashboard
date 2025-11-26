@@ -143,7 +143,7 @@ app.get('/api/sync', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  //console.log(`CITC proxy listening on port ${PORT}`);
+  console.log(`CITC proxy listening on port ${PORT}`);
 });
 
 function buildCacheKey(start, end, locations, revenueMode) {

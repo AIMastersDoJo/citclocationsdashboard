@@ -272,8 +272,6 @@
         if (EXACT_ALIAS[tCategory] && normalizeKey(EXACT_ALIAS[tCategory]) === normLabel) return true;
 
         // 1) exact normalized match against server fields
-        console.log("normLabel", normLabel);
-        console.log("tCategory", tCategory);
         if (tCategory && tCategory === normLabel) return true;
         if (courseName && courseName === normLabel) return true;
 
@@ -396,7 +394,7 @@
             if (instanceMatchesLabel(r, label)) results.push({ location: loc, instance: r });
           });
         });
-        console.log(`Found ${results.length} instances for "${label}"`);
+        //console.log(`Found ${results.length} instances for "${label}"`);
         return results;
       }
 
@@ -618,11 +616,11 @@
         }
         const out = {};
         for (const [loc, rows] of Object.entries(map)) {
-          console.log(rows);
+          //console.log(rows);
           out[loc] = (rows || []).filter(r => {
             console.log(r);
             for (const label of selectedLabels) {
-              console.log(selectedLabels);
+              //console.log(selectedLabels);
               if (instanceMatchesLabel ? instanceMatchesLabel(r, label) : (normalizeForCompare(r.trainingCategory || '') === normalizeForCompare(label))) return true;
             }
             return false;

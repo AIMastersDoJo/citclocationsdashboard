@@ -149,10 +149,10 @@
         <div class="controls">
           <div class="field locs" style="grid-column: span 6;">
             <label class="select-all"><input type="checkbox" id="selectAllLocs" checked /> Select all locations</label>
+            <label><input type="checkbox" class="loc" value="Regency Park" checked /> Regency Park</label>
             <label><input type="checkbox" class="loc" value="Mount Gambier" checked /> Mount Gambier</label>
             <label><input type="checkbox" class="loc" value="Port Pirie" checked /> Port Pirie</label>
             <label><input type="checkbox" class="loc" value="Whyalla" checked /> Whyalla</label>
-            <label><input type="checkbox" class="loc" value="Regency Park" checked /> Regency Park</label>
           </div>
         </div>
         <div class="meta">
@@ -671,11 +671,21 @@
         const el = document.createElement('div');
         el.className = 'card';
         const sorted = [...rows].sort((a,b)=> new Date(a.startDate) - new Date(b.startDate));
-        const rawCost = Number(rows[0]?.cost || rows[1]?.cost || rows[2]?.cost || rows[3]?.cost || rows[4]?.cost || 0);
+        const rawCost = rows
+  .map(r => Number(r?.cost))
+  .find(v => !isNaN(v) && v > 0) || 0;
+        const citbPrice = rows
+  .map(r => Number(r?.citbPrice))
+  .find(v => !isNaN(v) && v > 0) || 0;
         const costDisplay =
           rawCost > 0
             ? `$${rawCost.toLocaleString()}`
-            : '<span class="price-request">Price on Request</span>';
+            : '<span class="price-request">N/A</span>';
+        const citbCostDisplay =
+          citbPrice > 0
+            ? `$${citbPrice.toLocaleString()}`
+            : '<span class="price-request">N/A</span>';
+            
         const bodyRows = sorted.map(r => {
           const availableSeats =
             typeof r.availableSeats === "number"
@@ -698,10 +708,16 @@
         el.innerHTML = `
           <h3 class="course-title">
             <span class="course-name">${escapeHtml(category.replace(/,/g, ""))}</span>
-            <span class="course-cost">${costDisplay}</span>
+            <!--span class="course-cost">${costDisplay} | ${citbCostDisplay}</span-->
           </h3>
           <table>
             <thead>
+              <tr class="course-cost">
+                <th>Full</th>
+                <th>${costDisplay}</th>
+                <th>CITB</th>
+                <th>${citbCostDisplay}</th>
+              </tr>
               <tr>
                 <th>Start</th>
                 <th>End</th>

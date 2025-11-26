@@ -279,6 +279,8 @@ async function buildCard(instance, revenueMode) {
     "Confined Spaces (Combo)": "Enter & Work in Confined Spaces (Combo)",
     "Dogging": "Dogging",
     "Excavator": "Excavator",
+    "Dangerous Goods": "Dangerous Goods",
+    "White Card": "White Card",
   };
 
   // cleaned key map 
@@ -297,6 +299,25 @@ async function buildCard(instance, revenueMode) {
   const trainingCategory = mapped || (trainingCategoryKey === 'unknown' ? 'Unknown' : trainingCategoryKey);
 
   instance.trainingCategory = trainingCategory;
+
+  // --- NEW: fetch CITB price UDFs for this instance ---
+  // We'll try to fetch UDFs but don't fail the whole card if it errors.
+  let citbPrice = null;
+  let citbPriceRaw = null;
+  try {
+    const udfs = await fetchInstanceUDFs(instanceID);
+    // look for likely matching UDF names
+    const rawValue = findUdfValue(udfs, ['CITB_PRICE', 'citb price', 'citb_price', 'citb', 'CITB Price']);
+    if (rawValue != null) {
+      citbPriceRaw = String(rawValue);
+      // try to parse numeric value (strip currency symbols)
+      const parsed = parseNumber(rawValue);
+      citbPrice = parsed !== null ? parsed : null;
+    }
+  } catch (err) {
+    // non-fatal: just log
+    console.warn('[udf] Failed to fetch UDFs for instance', instanceID, sanitiseError(err));
+  }
   
   return {
     id: instanceID,
@@ -314,7 +335,10 @@ async function buildCard(instance, revenueMode) {
     revenue,
     cost,
     CourseName: rawCourseName, 
-    Category: rawCategory, 
+    Category: rawCategory,
+    // CITB fields added
+    citbPrice,      // numeric value when parseable
+    citbPriceRaw,   // raw string if present
   };
 }
 
@@ -701,4 +725,128 @@ function buildDemoData(start, end, locations) {
     result[loc] = cards;
   }
   return result;
+}
+
+/* ---------------------------
+   New helper functions for UDF/CITB price
+   --------------------------- */
+
+/**
+ * Fetch instance UDFs from aXcelerate.
+ * Try GET /course/instance/{id}/udfs - if your aXcelerate variant uses a different path,
+ * adjust it here.
+ * Returns normalized array (could be empty).
+ */
+async function fetchInstanceUDFs(instanceID) {
+  const response = await requestWithRetry(() =>
+    concurrencyLimiter(() =>
+      axiosClient.get('/course/instance/detail', {
+        params: {
+          instanceID,
+          type: 'w'
+        }
+      })
+    )
+  );
+  console.log('[UDF RESPONSE]', instanceID, response.data);
+  return extractUdfsFromDetail(response.data);
+}
+
+function extractUdfsFromDetail(detail) {
+  if (!detail || typeof detail !== 'object') return [];
+
+  const results = [];
+
+  // 1) Extract all CUSTOMFIELD_ keys (your primary storage)
+  for (const [key, value] of Object.entries(detail)) {
+    if (key.startsWith('CUSTOMFIELD_')) {
+      results.push({
+        fieldName: key.replace('CUSTOMFIELD_', ''), // e.g. "CITB_PRICE"
+        value: value
+      });
+    }
+  }
+
+  // 2) (optional fallback) extract fields from USERDEFINEDFIELDS if they exist
+  if (detail.USERDEFINEDFIELDS && typeof detail.USERDEFINEDFIELDS === 'object') {
+    for (const [key, value] of Object.entries(detail.USERDEFINEDFIELDS)) {
+      results.push({ fieldName: key, value });
+    }
+  }
+
+  // 3) Extract from activityData if present
+  if (Array.isArray(detail.activityData)) {
+    for (const act of detail.activityData) {
+      if (!act || typeof act !== 'object') continue;
+
+      // aX sometimes includes CUSTOMFIELD_ inside activities as well
+      for (const [key, value] of Object.entries(act)) {
+        if (key.startsWith('CUSTOMFIELD_')) {
+          results.push({
+            fieldName: key.replace('CUSTOMFIELD_', ''),
+            value: value
+          });
+        }
+      }
+
+      if (act.UDFs) {
+        for (const uf of act.UDFs) {
+          results.push(uf);
+        }
+      }
+
+      if (act.USERDEFINEDFIELDS) {
+        for (const [key, value] of Object.entries(act.USERDEFINEDFIELDS)) {
+          results.push({ fieldName: key, value });
+        }
+      }
+    }
+  }
+  console.log('[results]', results);
+  return results;
+}
+
+/**
+ * Search an array of UDF objects for a field name and return its value.
+ * Be flexible: UDF objects may have shapes like:
+ *  { fieldName: 'CITB Price', value: '340' }
+ *  { name: 'CITB Price', VALUE: '340' }
+ *  { DisplayName: 'CITB', Value: '340' }
+ */
+function findUdfValue(udfsArray, candidates = []) {
+  if (!Array.isArray(udfsArray) || udfsArray.length === 0) return null;
+  const lowerCandidates = candidates.map((c) => String(c).toLowerCase());
+  for (const u of udfsArray) {
+    if (!u || typeof u !== 'object') continue;
+    // potential name keys
+    const nameKeys = ['fieldName', 'fieldname', 'name', 'displayName', 'DisplayName', 'label', 'Label', 'FieldName'];
+    const valueKeys = ['value', 'Value', 'VALUE', 'val', 'Val'];
+    // check name keys
+    const name = nameKeys.map(k => u[k]).find(Boolean);
+    if (typeof name === 'string') {
+      const nameLower = name.toLowerCase();
+      // exact or contains match
+      if (lowerCandidates.some(c => c === nameLower || nameLower.includes(c))) {
+        // return first value key found
+        const val = valueKeys.map(k => u[k]).find(v => v !== undefined);
+        if (val !== undefined) return val;
+      }
+    }
+    // fallback: sometimes key/value pairs are direct (like { 'CITB Price': '340' })
+    for (const [k, v] of Object.entries(u)) {
+      if (typeof k === 'string' && lowerCandidates.some(c => k.toLowerCase() === c || k.toLowerCase().includes(c))) {
+        return v;
+      }
+    }
+  }
+  // as a last resort - search any top-level property keys for candidate names
+  for (const u of udfsArray) {
+    for (const c of lowerCandidates) {
+      const matchingKey = Object.keys(u).find(k => typeof k === 'string' && k.toLowerCase().includes(c));
+      if (matchingKey) {
+        return u[matchingKey];
+      }
+    }
+  }
+  return null;
 }

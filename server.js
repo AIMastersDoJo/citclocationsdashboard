@@ -18,7 +18,7 @@ const {
 
 const PORT = Number(PORT_ENV) || 3001;
 const CONCURRENCY_LIMIT = Math.max(1, Number(CONCURRENCY_LIMIT_ENV) || 8);
-const CACHE_TTL_SECONDS = Math.max(1, Number(CACHE_TTL_SECONDS_ENV) || 25);
+const CACHE_TTL_SECONDS = CACHE_TTL_SECONDS_ENV; //Math.max(1, Number(CACHE_TTL_SECONDS_ENV) || 3600); // default 1 hour
 
 const DEFAULT_LOCATIONS = ['Mount Gambier', 'Port Pirie', 'Whyalla', 'Regency Park'];
 const VALID_REVENUE_MODES = new Set(['enrolment', 'invoice']);
@@ -96,7 +96,7 @@ app.get('/api/sync', async (req, res) => {
       data,
     });
   }
-  //console.log('[sync] live mode', { start, end, revenueMode, locations });
+  console.log('[sync] live mode', { start, end, revenueMode, locations });
   const cacheKey = buildCacheKey(start, end, locations, revenueMode);
   const cached = getFromCache(cacheKey);
 
@@ -203,6 +203,12 @@ async function fetchInstances(location, start, end) {
  * @returns {Promise<Object|null>}
  */
 async function buildCard(instance, revenueMode) {
+  /*
+  const fs = require('fs');
+
+  fs.appendFile('sync.log', `\n${JSON.stringify(instance)}\n`, (err) => {
+      if (err) throw err;
+  });*/
   const instanceID = getInstanceIdentifier(instance);
   if (!instanceID) {
     console.warn('[sync] Skipping instance without identifier');
@@ -286,6 +292,7 @@ async function buildCard(instance, revenueMode) {
   // cleaned key map 
  const displayNameMap = {};
   Object.entries(displayNameMapRaw).forEach(([k, v]) => {
+
     displayNameMap[ cleanNameRaw(k) ] = v;
   });
 

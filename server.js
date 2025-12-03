@@ -273,6 +273,7 @@ async function buildCard(instance, revenueMode) {
     "operate elevating work platform - (scissor lift)": "Scissor Lift",
     "operate elevating work platform - (scissor lift&boom lift)": "Scissor Lift & Boom Lift",
     "operate elevating work platform - (scissor lift, boom lift&vertical lift)": "Scissor Lift, Boom Lift & Vertical Lift",
+    "Operate Elevating Work Platform - (Scissor Lift & Vertical Lift)": "Scissor Lift & Vertical Lift",
     "MPTV": "Multi Purpose Tool Vehicle",
     "Multi Purpose Tool Vehicle": "Multi Purpose Tool Vehicle",
     "Basic Rigging": "Basic Rigging",

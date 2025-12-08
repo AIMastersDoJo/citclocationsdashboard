@@ -166,6 +166,7 @@ function getFromCache(key) {
   return { data: entry.data, updated: entry.updated };
 }
 
+
 /**
  * Fetch course instances for a location within the provided date range.
  * @param {string} location
@@ -174,11 +175,12 @@ function getFromCache(key) {
  * @returns {Promise<Array<Object>>}
  */
 async function fetchInstances(location, start, end) {
+
   const body = qs.stringify({
     type: 'w',
     location,
     startDate_min: start,
-    startDate_max: end,
+    finishDate_max: end,
     purgeCache: true,
     displayLength: 10000,
   });
@@ -288,12 +290,12 @@ async function buildCard(instance, revenueMode) {
     "Excavator": "Excavator",
     "Dangerous Goods": "Dangerous Goods",
     "White Card": "White Card",
+    "Front End Loader": "Front End Loader",
   };
 
   // cleaned key map 
  const displayNameMap = {};
   Object.entries(displayNameMapRaw).forEach(([k, v]) => {
-
     displayNameMap[ cleanNameRaw(k) ] = v;
   });
 

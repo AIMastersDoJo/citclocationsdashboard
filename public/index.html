@@ -444,7 +444,7 @@
       // Default to current month -> +1 year
       (function initDates(){
         const now = new Date();
-        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        const start = new Date(now.getFullYear(), now.getMonth());
         const end = new Date(now.getFullYear() + 1, now.getMonth(), 1);
         startDate = toISODate(start);
         endDate = toISODate(end);
@@ -569,6 +569,7 @@
         const allChecked = locs.length > 0 && locs.every(i => i.checked);
         if (elSelectAllLocs) elSelectAllLocs.checked = allChecked;
       }
+
       if (elSelectAllLocs){
         elSelectAllLocs.addEventListener('change', () => {
           const locs = document.querySelectorAll('.loc');
@@ -576,6 +577,7 @@
           load();
         });
       }
+
       document.querySelectorAll('.loc').forEach(el => el.addEventListener('change', syncSelectAllLocs));
       syncSelectAllLocs();
 
@@ -585,6 +587,7 @@
         const allChecked = courses.length > 0 && courses.every(i => i.checked);
         if (elSelectAllCourses) elSelectAllCourses.checked = allChecked;
       }
+
       if (elSelectAllCourses){
         elSelectAllCourses.addEventListener('change', () => {
           const courses = document.querySelectorAll('.course');
@@ -604,7 +607,7 @@
       }
 
       // Initial load
-      load();
+      //load();
 
       // --- SMART filterByCourses: uses instanceMatchesLabel + labelForInstance ---
       function filterByCourses(map){

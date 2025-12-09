@@ -58,85 +58,32 @@
       .available { color: var(--ok);font-weight: 800; }
       .muted { color: var(--muted); }
       .loading { margin-top: 10px; color: var(--muted); font-size: 13px; }
-      footer { text-align: center; color: #fff; font-size: 16px; margin: 0; padding: 10px 16px; background: var(--citc-orange); position: fixed;bottom: 0;width: 100%;}
-      @media (max-width: 1600px) { .sections { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-      @media (max-width: 1200px) { .sections { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-      @media (max-width: 960px)  { .layout { grid-template-columns: 1fr; } .sections { grid-template-columns: 1fr; } .controls { grid-template-columns: 1fr 1fr; } .locs { grid-column: span 2; } }
-      /* === Centered Loader Overlay === */
       .loading-overlay {
         position: fixed;
         top: 0;
         left: 0;
         width: 100%;
         height: 100%;
-        background: rgba(255, 255, 255, 0.85);
+        background: rgba(255,255,255,0.85);
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
         z-index: 9999;
         opacity: 0;
         pointer-events: none;
-        transition: opacity 0.3s ease;
+        transition: opacity 0.25s ease;
       }
-
-      /* Show loader when visible */
-      .loading-overlay.visible {
-        opacity: 1;
-        pointer-events: all;
-      }
-
-      /* Spinner element */
-      .spinner {
-        width: 50px;
-        height: 50px;
-        border: 5px solid #ddd;
-        border-top: 5px solid var(--citc-orange);
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        margin-bottom: 12px;
-      }
-
-      @keyframes spin {
-        to { transform: rotate(360deg); }
-      }
-
-      /* Loading text */
-      .loading-overlay p {
-        font-size: 16px;
-        color: var(--grey-900);
-        font-weight: 500;
-        margin: 0;
-      }
-
-      /* Course card title with cost */
-      .course-title {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 8px 10px;
-        background: var(--grey-100);
-        border-bottom: 1px solid var(--grey-300);
-      }
-
-      .course-name {
-        font-size: 15px;
-        font-weight: 700;
-        color: var(--grey-900);
-      }
-      .course-cost {
-        font-weight: 700;
-        font-size: 14px;
-        color: var(--citc-orange);
-      }
-
-      .price-request {
-        color: var(--muted);
-        font-weight: 600;
-        font-style: italic;
-        font-size: 13px;
-      }
-
+      .loading-overlay.visible { opacity: 1; pointer-events: all; }
+      .spinner { width: 50px; height: 50px; border: 5px solid #ddd; border-top: 5px solid var(--citc-orange); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 12px;}
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .course-title { display:flex; justify-content:space-between; align-items:center; padding:8px 10px; background:var(--grey-100); border-bottom:1px solid var(--grey-300); }
+      .course-name { font-size:15px; font-weight:700; color:var(--grey-900); }
+      .course-cost { font-weight:700; font-size:14px; color:var(--citc-orange); }
+      .price-request { color: var(--muted); font-weight:600; font-style:italic; font-size:13px; }
+      footer { text-align: center; color: #fff; font-size: 16px; margin: 0; padding: 10px 16px; background: var(--citc-orange); position: fixed;bottom: 0;width: 100%;}
+      @media (max-width: 1600px) { .sections { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+      @media (max-width: 1200px) { .sections { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      @media (max-width: 960px)  { .layout { grid-template-columns: 1fr; } .sections { grid-template-columns: 1fr; } .controls { grid-template-columns: 1fr 1fr; } .locs { grid-column: span 2; } }
     </style>
   </head>
   <body>
@@ -155,10 +102,12 @@
             <label><input type="checkbox" class="loc" value="Whyalla" checked /> Whyalla</label>
           </div>
         </div>
+
         <div class="meta">
           <span id="health">Checking server…</span>
           <span id="cache" style="margin-left: 10px;"></span>
         </div>
+
         <div class="loading-overlay" id="loadingOverlay">
           <div class="spinner"></div>
           <p>Loading data...</p>
@@ -174,6 +123,7 @@
           <label class="select-all" style="display:block; margin-bottom:6px;"><input type="checkbox" id="selectAllCourses"/> Select all courses</label>
           <div id="courseList" class="cols"></div>
         </aside>
+
         <main id="sections" class="sections" aria-live="polite"></main>
       </div>
     </div>
@@ -181,525 +131,317 @@
     <footer>citc.com.au</footer>
 
     <script>
+      // Config
+      const API_BASE = window.DASHBOARD_API_BASE || window.location.origin;
+      const COURSE_CACHE_KEY = 'citc::courses::all';
+      const COURSE_CACHE_TTL = 1000 * 60 * 60 * 12; // 12 hours
+      const INSTANCES_CACHE_TTL = 1000 * 60 * 30; // 30 minutes
 
-      // === CONFIGURATION FLAGS ===
-      // When deploying to production, set these two variables before this script.
-      const API_BASE = window.DASHBOARD_API_BASE || window.location.origin; // e.g., https://api.citc.com.au
-      const DEMO_MODE = window.DASHBOARD_DEMO_MODE === true;
-
-      // === helpers for normalization and dynamic sidebar ===
-      function normalizeForCompare(s){
-        return (s || '').toString().trim().replace(/^[,;\/\s]+|[,;\/\s]+$/g,'').replace(/\s+/g,' ');
-      }
-
-      // --- Smart aliasing + matching (keeps manual sidebar but matches messy API values) ---
-      const COURSE_ALIAS_MAP = {
-        "Scissor Lift": ["operate elevating work platform - (scissor lift)"],
-        "Scissor Lift & Boom Lift": ["operate elevating work platform - (scissor lift&boom lift)"],
-        "Scissor Lift, Boom Lift & Vertical Lift": ["operate elevating work platform - (scissor lift, boom lift&vertical lift)"],
-        "Elevating Work Platform (EWP)": ["EWP", "Elevating Work Platform", "Operate Elevating Work Platform"],
-        "Multi Purpose Tool Vehicle": ["MPTV", "Multi Purpose Tool Vehicle", "Multi Purpose Tool Vehicle (MPTV)"],
-        "Personnel Hoist": ["G&P Hoist", "G & P Hoist", "G and P Hoist", "Personnel Hoist"],
-        "Basic Rigging": ["basic rigging", "licence to perform rigging basic level", "licence to perform rigging intermediate level"],
-        "Advanced Rigging": ["licence to perform rigging advanced level", "licence to perform rigging advanced level"],
-        "Basic Scaffolding": ["licence to erect alter&dismantle scaffolding basic level", "licence to erect alter & dismantle scaffolding basic level", "basic scaffolding"],
-        "Intermediate Scaffolding": ["licence to erect alter&dismantle scaffolding intermediate level", "licence to erect alter & dismantle scaffolding intermediate level", "intermediate scaffolding"],
-        "Silicosis": ["course in crystalline silica exposure prevention", "Silicosis Awareness", "Silicosis"],
-        "Forklift": ["licence to operate a forklift truck", "licence to operate a forklift truck (inexperienced/entry level)", "licence to operate a forklift truck (inexperienced/entry level)"],
-        "Forklift (Entry Level)": ["licence to operate a forklift truck (inexperienced/entry level)", "forklift entry", "forklift (entry)"],
-        "Excavator": ["conduct civil construction excavator operations", "Excavator"],
-        "Skid Steer Loader": ["conduct civil construction skid steer loader operations", "Skid Steer Loader"],
-        "Front End Loader": ["conduct civil construction wheeled front end loader operations", "Front End Loader"],
-        "Enter & Work in Confined Spaces (Combo)": ["enter&work in confined spaces combination", "Confined Spaces (Combo)", "Enter & Work in Confined Spaces (Combo)"],
-        "Dogging": ["licence to perform dogging", "Dogging"],
-        "White Card": ["prepare to work safely in the construction industry - (white card)", "White Card", "prepare to work safely in the construction industry"],
-        "Basic Scaffolding": ["licence to erect alter&dismantle scaffolding basic level","licence to erect, alter&dismantle scaffolding basic level","licence to erect alter & dismantle scaffolding basic level","scaffolding basic level"],
-        "Intermediate Scaffolding": ["licence to erect alter&dismantle scaffolding intermediate level","licence to erect, alter&dismantle scaffolding intermediate level","licence to erect alter & dismantle scaffolding intermediate level","scaffolding intermediate level"],
-        // add more entries as you discover mismatches
-      };
-
-       // exact alias map for long API canonical strings -> manual label
-      const EXACT_ALIAS = {
-        'licence to perform rigging advanced level': 'Advanced Rigging',
-        'licence to perform rigging intermediate level': 'Intermediate Rigging',
-        'licence to operate a bridge&gantry crane': 'Bridge & Gantry Crane',
-        'licence to operate a slewing mobile crane (up to 60 tonnes)': 'Slewing Mobile Crane',
-        'licence to operate a non-slewing mobile crane (greater than 3 tonnes capacity)': 'Non Slewing Mobile Crane',
-        'licence to operate a vehicle loading crane (capacity 10 metre tonnes&above)': 'CV Crane',
-        'licence to operate a forklift truck (inexperienced/entry level)': 'Forklift (Entry Level)',
-        'licence to operate a forklift truck': 'Forklift',
-        'course in crystalline silica exposure prevention': 'Silicosis',
-        'enter&work in confined spaces combination': 'Enter & Work in Confined Spaces (Combo)',
-        'licence to erect alter&dismantle scaffolding basic level': 'Basic Scaffolding',
-        'licence to erect alter&dismantle scaffolding intermediate level': 'Intermediate Scaffolding',
-        'licence to erect, alter&dismantle scaffolding basic level': 'Basic Scaffolding',
-        'licence to erect, alter&dismantle scaffolding intermediate level': 'Intermediate Scaffolding',
-        // add more mapping entries you find in the `cats` list
-      };
-
-      function normalizeKey(s){
-        return (s || '').toString()
-          .trim()
-          .replace(/^[,;\/\s]+|[,;\/\s]+$/g,'')   // strip leading/trailing punctuation/spaces
-          .replace(/\s+/g,' ')                    // collapse multiple spaces
-          .replace(/[“”"']/g, '')                 // remove extra quotes
-          .toLowerCase();
-      }
-
-      // safe regex escape helper
-      function escapeForRegex(s){
-        return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      }
-
-      // build a whole-word regex for the label (safe)
-      function wordRegexFor(s){
-        if (!s) return null;
-        const safe = escapeForRegex(s)
-          .replace(/\\&|\\sand\\s/gi, '(?:&|and)'); // treat & and "and" similarly
-        const tokens = safe.split(/\s+/).filter(Boolean).map(t => `\\b${t}\\b`);
-        if (tokens.length === 0) return null;
-        return new RegExp(tokens.join('.*'), 'i');
-      }
-
-      function instanceMatchesLabel(instance, label){
-        const normLabel = normalizeKey(label);
-        const tCategory = normalizeKey(instance.trainingCategory || instance.trainingCategoryName || instance.TRAININGCATEGORY || instance.trainingCategoryDisplay || '');
-        const courseName = normalizeKey(instance.CourseName || instance.NAME || '');
-        const code = normalizeKey(instance.CODE || instance.code || '');
-        const combined = `${tCategory} ${courseName} ${code}`;
-
-        // highest priority: exact server raw -> manual label mapping
-        if (EXACT_ALIAS[tCategory] && normalizeKey(EXACT_ALIAS[tCategory]) === normLabel) return true;
-
-        // 1) exact normalized match against server fields
-        if (tCategory && tCategory === normLabel) return true;
-        if (courseName && courseName === normLabel) return true;
-
-        /*
-        // 2) explicit alias match
-        const aliases = COURSE_ALIAS_MAP[label] || [];
-        for (const a of aliases){
-          if (!a) continue;
-          const na = normalizeKey(a);
-          if (na === tCategory || na === courseName || combined.indexOf(na) !== -1) return true;
-        }
-
-        
-        // 3) whole-word label regex (safe)
-        const r = wordRegexFor(label);
-        if (r && (r.test(tCategory) || r.test(courseName) || r.test(combined))) return true;
-        
-        // 4) conservative token matching
-        const tokens = normLabel.split(/\s+/).filter(t => t.length > 2);
-        if (tokens.length > 0) {
-          let present = 0;
-          for (const tok of tokens) {
-            try {
-              const rx = new RegExp(`\\b${escapeForRegex(tok)}\\b`, 'i');
-              if (rx.test(combined)) present++;
-            } catch (e){
-              // ignore token if it can't be compiled
-            }
-          }
-          // require ALL tokens for short labels, higher fraction for long labels
-          if (tokens.length <= 2) {
-            if (present === tokens.length) return true;
-          } else {
-            if (present >= Math.ceil(tokens.length * 0.7)) return true; // 70% threshold
-          }
-        }
-        */
-        // 5) useful code heuristics for families (special cases)
-        if (code && normLabel.includes('forklift') && code.indexOf('CPCC') !== -1) return true;
-       
-        return false;
-      }
-
-      function labelForInstance(instance){
-        // prefer server-normalized canonical values first (if they exactly match one of COURSE_NAMES)
-        const serverRaw = normalizeKey(instance.trainingCategory || instance.trainingCategoryName || instance.TRAININGCATEGORY || '');
-        for (const label of Object.values(COURSE_NAMES || {})) {
-          if (serverRaw && serverRaw === normalizeKey(label)) return label;
-        }
-
-        // exact alias override
-        if (EXACT_ALIAS[serverRaw]) return EXACT_ALIAS[serverRaw];
-
-        // scoring among manual labels
-        const candidates = Object.values(COURSE_NAMES || {});
-        let best = null;
-        let bestScore = -1;
-
-        const courseName = normalizeKey(instance.COURSENAME || instance.NAME || '');
-        const combined = `${serverRaw} ${courseName}`;
-
-        for (const label of candidates){
-          let score = 0;
-          const na = normalizeKey(label);
-
-          // strong exact matches
-          if (serverRaw && serverRaw === na) score += 200;
-          if (courseName && courseName === na) score += 150;
-
-          // alias exact
-          const aliases = COURSE_ALIAS_MAP[label] || [];
-          for (const a of aliases){
-            const aa = normalizeKey(a);
-            if (aa === serverRaw || aa === courseName) score += 80;
-            if (combined.indexOf(aa) !== -1) score += 30;
-          }
-
-          // whole-label regex match
-          try {
-            const r = wordRegexFor(label);
-            if (r && (r.test(serverRaw) || r.test(courseName) || r.test(combined))) score += 60;
-          } catch (e) {}
-
-          // conservative token boost
-          const tokens = na.split(/\s+/).filter(t => t.length > 2);
-          if (tokens.length > 0) {
-            let present = 0;
-            for (const tok of tokens) {
-              try {
-                const rx = new RegExp(`\\b${escapeForRegex(tok)}\\b`, 'i');
-                if (rx.test(combined)) present++;
-              } catch (e) {}
-            }
-            if (tokens.length <= 2 && present === tokens.length) score += 50;
-            if (tokens.length > 2 && present >= Math.ceil(tokens.length * 0.7)) score += 25;
-          }
-
-          // small boosts for distinctive keywords
-          if (/ewp|mptv|scissor|hoist|silicosis/.test(na) && /ewp|mptv|scissor|hoist|silicosis/.test(combined)) score += 8;
-
-          if (score > bestScore){
-            bestScore = score;
-            best = label;
-          }
-        }
-
-        // require higher confidence
-        if (bestScore >= 80) return best;
-
-        // fallback to server name or raw course name
-        return instance.trainingCategory || instance.trainingCategoryName || instance.TRAININGCATEGORY || instance.COURSENAME || instance.NAME || 'Unknown';
-      }
-
-      // debug helper: run in console e.g. findInstancesForLabel('Scissor Lift')
-      function findInstancesForLabel(label){
-        if (!cachedData) { console.warn('No cachedData yet'); return []; }
-        const results = [];
-        Object.entries(cachedData).forEach(([loc, arr])=>{
-          (arr||[]).forEach(r=>{
-            if (instanceMatchesLabel(r, label)) results.push({ location: loc, instance: r });
-          });
-        });
-        //console.log(`Found ${results.length} instances for "${label}"`);
-        return results;
-      }
-
-      // Build a local sample dataset (kept as fallback if API unavailable)
-      function buildLocalSample() {
-        const sessionRows = [
-          { startDate: '2024-04-22', endDate: '2024-04-26', numbers: 3, capacity: 10 },
-          { startDate: '2024-10-27', endDate: '2024-10-31', numbers: 8, capacity: 10 },
-          { startDate: '2024-11-20', endDate: '2024-11-24', numbers: 10, capacity: 10 }
-        ];
-        const price = 1795; // illustrative
-        const coursesByLocation = {
-          'Regency Park': ['Dogging', 'White Card (General Construction Induction)', 'Forklift'],
-          'Mount Gambier': ['Dogging', 'Forklift', 'CN Crane'],
-          'Port Pirie': ['Dogging', 'Forklift', 'CN Crane'],
-          'Whyalla': ['Dogging', 'White Card (General Construction Induction)', 'MPTV (Mobile Plant Ticket Verification / High Risk)']
-        };
-        const out = {};
-        Object.keys(coursesByLocation).forEach((loc) => {
-          let id = 1000;
-          out[loc] = coursesByLocation[loc].flatMap((course) =>
-            sessionRows.map((r) => ({
-              instanceID: `${loc}-${course}-${id++}`,
-              trainingCategory: course,
-              startDate: r.startDate,
-              endDate: r.endDate,
-              numbers: r.numbers,
-              capacity: r.capacity,
-              revenue: r.numbers * price
-            }))
-          );
-        });
-        return out;
-      }
-
-      let cachedData = null; // cache for API response reuse
-      let startDate = '';
-      let endDate = '';
-      const elSections = document.getElementById('sections');
+      // DOM refs
       const elHealth = document.getElementById('health');
       const elCache = document.getElementById('cache');
-      const elLoading = document.getElementById('loading');
+      const elLoadingOverlay = document.getElementById('loadingOverlay');
+      const elCourseSearch = document.getElementById('courseSearch');
+      const elCourseList = document.getElementById('courseList');
       const elSelectAllLocs = document.getElementById('selectAllLocs');
       const elSelectAllCourses = document.getElementById('selectAllCourses');
-      const elCourseSearch = document.getElementById('courseSearch');
+      const elSections = document.getElementById('sections');
 
-      // Default to current month -> +1 year
-      (function initDates(){
-        const now = new Date();
-        const start = new Date(now.getFullYear(), now.getMonth());
-        const end = new Date(now.getFullYear() + 1, now.getMonth(), 1);
-        startDate = toISODate(start);
-        endDate = toISODate(end);
-      })();
+      //Auto-load saved courses on page load
+      document.addEventListener("DOMContentLoaded", () => {
+        const saved = JSON.parse(localStorage.getItem("citc_selected_courses") || "[]");
+        if (saved.length > 0) {
+          // Wait until course list loads, then fetch instances
+          setTimeout(onCourseSelectionChange, 300);
+        } else {
+          // Show 4 blank location columns
+          renderSectionsChunked(getEmptyLocationMap());
+        }
+      });
 
-      // Health check
+      // in-memory instance cache
+      const instancesCache = new Map();
+
+      // initial health
       fetch(`${API_BASE}/api/health`).then(r => r.json()).then(j => {
         elHealth.textContent = `Server: ${j.status} · ${new Date(j.time).toLocaleString()}`;
-      }).catch(() => {
-        elHealth.textContent = 'Server: unavailable';
-      });
+      }).catch(() => { elHealth.textContent = 'Server: unavailable'; });
 
-      // Populate left column with course checkboxes (MANUAL list kept)
-      const COURSE_NAMES = {
-        'Advanced Rigging': 'Advanced Rigging',
-        'Advanced Scaffolding': 'Advanced Scaffolding',
-        'Basic Rigging': 'Basic Rigging',
-        'Basic Scaffolding': 'Basic Scaffolding',
-        'Breathing Apparatus': 'Breathing Apparatus',
-        'Bridge & Gantry Crane': 'Bridge & Gantry Crane',
-        'CV Crane': 'CV Crane',
-        'Certificate IV in WHS': 'Certificate IV in WHS',
-        'Confined Space with Gas Test': 'Confined Space with Gas Test',
-        'Dangerous Goods': 'Dangerous Goods',
-        'Dogging': 'Dogging',
-        'Elevating Work Platform (EWP)': 'Elevating Work Platform (EWP)',
-        'Enter & Work in Confined Spaces': 'Enter & Work in Confined Spaces',
-        'Enter & Work in Confined Spaces (Combo) or Confined Spaces (Combo)': 'Enter & Work in Confined Spaces (Combo)',
-        'Excavator': 'Excavator',
-        'Forklift': 'Forklift',
-        'Forklift (Entry Level)': 'Forklift (Entry Level)',
-        'Front End Loader': 'Front End Loader',
-        'Intermediate Rigging': 'Intermediate Rigging',
-        'Intermediate Scaffolding': 'Intermediate Scaffolding',
-        'Multi Purpose Tool Vehicle': 'Multi Purpose Tool Vehicle',
-        'Non Slewing Mobile Crane': 'Non Slewing Mobile Crane',
-        'Order Picker': 'Order Picker',
-        'G&P Hoist': 'Personnel Hoist',
-        'Safety Leadership': 'Safety Leadership',
-        'Scissor Lift': 'Scissor Lift',
-        'Scissor Lift & Boom Lift': 'Scissor Lift & Boom Lift',
-        'Scissor Lift & Vertical Lift': 'Scissor Lift & Vertical Lift',
-        'Scissor Lift, Boom Lift & Vertical Lift': 'Scissor Lift, Boom Lift & Vertical Lift',
-        'Silicosis': 'Silicosis',
-        'Skid Steer Loader': 'Skid Steer Loader',
-        'Slewing Mobile Crane': 'Slewing Mobile Crane',
-        'White Card': 'White Card',
-        'Work Safely at Heights': 'Work Safely at Heights'
-      };
-      const courseList = document.getElementById('courseList');
-      const SORTED_COURSES = Object.entries(COURSE_NAMES)
-        .sort((a, b) => a[1].localeCompare(b[1], undefined, { sensitivity: 'base' }));
-      // Generate checkbox list (manual)
-      courseList.innerHTML = SORTED_COURSES.map(([key, label]) =>
-        `<label class="course-item">
-          <input type="checkbox" class="course" value="${escapeHtml(label)}" /> ${escapeHtml(label)}
-        </label>`
-      ).join('');
-
-      // Course search filtering (client-side on the checkbox list)
-      function filterCourseList(term){
-        const q = String(term || '').trim().toLowerCase();
-        const items = courseList.querySelectorAll('.course-item');
-        items.forEach((el)=>{
-          const text = el.textContent || '';
-          el.style.display = q && !text.toLowerCase().includes(q) ? 'none' : '';
-        });
+      // utility: localStorage wrapper for courses
+      function loadCoursesFromLocal() {
+        try {
+          const raw = localStorage.getItem(COURSE_CACHE_KEY);
+          if (!raw) return null;
+          const parsed = JSON.parse(raw);
+          if (!parsed.expires || Date.now() > parsed.expires) {
+            localStorage.removeItem(COURSE_CACHE_KEY);
+            return null;
+          }
+          return parsed.data;
+        } catch (e) { return null; }
+      }
+      function saveCoursesToLocal(data) {
+        try {
+          localStorage.setItem(COURSE_CACHE_KEY, JSON.stringify({ data, expires: Date.now() + COURSE_CACHE_TTL }));
+        } catch (e) {}
       }
 
-      // Load data automatically on change (with caching)
-      const load = debounce(async () => {
-        const loaderOverlay = document.getElementById("loadingOverlay");
-        const start = startDate; const end = endDate;
-        const locArray = Array.from(document.querySelectorAll('.loc:checked')).map(i => i.value);
-        const locations = locArray.join('|');
-
-        if (DEMO_MODE) {
-          elCache.textContent = 'Demo mode enabled';
-          const sample = buildLocalSample();
-          cachedData = sample;
-          const filtered = filterByLocations(filterByCourses(sample), new Set(locArray));
-          renderSections(filtered);
-          if (loaderOverlay) loaderOverlay.classList.remove('visible');
-          return;
+      // Fetch all courses
+      async function loadAllCourses() {
+        const fromLocal = loadCoursesFromLocal();
+        if (fromLocal) {
+          renderCourseList(fromLocal);
+          elCache.textContent = 'Courses: cached (local)';
+          return fromLocal;
         }
 
-        if (loaderOverlay) loaderOverlay.classList.add('visible');
-        elSections.innerHTML = '';
-        elCache.textContent = '';
         try {
-          const url = new URL(`${API_BASE}/api/sync`);
-          url.searchParams.set('start', start);
-          url.searchParams.set('end', end);
-          if (locations) url.searchParams.set('locations', locations);
-          const res = await fetch(url.toString());
-          let data = await res.json();
-          if (!res.ok) throw new Error(data?.error || 'Request failed');
-
-          // cache and render
-          cachedData = data.data;
-          elCache.textContent = data.cached ? 'Cached result' : 'Fresh result';
-          const filtered = filterByLocations(filterByCourses(cachedData), new Set(locArray));
-          renderSections(filtered);
-        } catch (e) {
-          elCache.textContent = 'Sample result (no API)';
-          const sample = buildLocalSample();
-          cachedData = sample;
-          const filtered = filterByLocations(filterByCourses(sample), new Set(locArray));
-          renderSections(filtered);
-        } finally {
-          if (loaderOverlay) loaderOverlay.classList.remove('visible');
+          elCache.textContent = 'Loading courses…';
+          const r = await fetch(`${API_BASE}/api/courses`);
+          const json = await r.json();
+          const data = json.data || [];
+          saveCoursesToLocal(data);
+          renderCourseList(data);
+          elCache.textContent = json.cached ? 'Courses: cached (server)' : 'Courses: fresh';
+          return data;
+        } catch (err) {
+          console.error('Failed to load courses', err);
+          elCache.textContent = 'Failed to load courses';
+          renderCourseList([]);
+          return [];
         }
-      }, 300);
+      }
 
-      ['change','input'].forEach(evt => {
-        document.querySelectorAll('.loc, .course').forEach(el => el.addEventListener(evt, load));
-      });
+      // Render sidebar course list (checkboxes)
+      function renderCourseList(courses) {
+        // preserve previous checked state
+        //const previouslyChecked = new Set(Array.from(document.querySelectorAll('.course:checked')).map(i => i.dataset.id));
+        const saved = JSON.parse(localStorage.getItem("citc_selected_courses") || "[]");
+        const savedSet = new Set(saved);
 
-      // Select-all for locations
-      function syncSelectAllLocs(){
+        elCourseList.innerHTML = courses.map(c => {
+          const cleanName = stripHTML(c.name);
+          const checked = savedSet.has(String(c.id)) ? "checked" : "";
+          return `<label class="course-item">
+              <input type="checkbox" class="course"
+                    data-id="${escapeHtml(c.id)}"
+                    value="${escapeHtml(cleanName)}"
+                    ${checked} />
+              ${escapeHtml(cleanName)}
+            </label>`;
+        }).join('');
+
+        // attach listeners
+        document.querySelectorAll('.course').forEach(el => el.addEventListener('change', onCourseSelectionChange));
+        syncSelectAllCourses();
+      }
+
+      // Sync select-all locations checkbox
+      function syncSelectAllLocs() {
         const locs = Array.from(document.querySelectorAll('.loc'));
         const allChecked = locs.length > 0 && locs.every(i => i.checked);
-        if (elSelectAllLocs) elSelectAllLocs.checked = allChecked;
+        elSelectAllLocs.checked = allChecked;
       }
-
-      if (elSelectAllLocs){
-        elSelectAllLocs.addEventListener('change', () => {
-          const locs = document.querySelectorAll('.loc');
-          locs.forEach(i => { i.checked = elSelectAllLocs.checked; });
-          load();
-        });
-      }
-
+      elSelectAllLocs.addEventListener('change', () => {
+        document.querySelectorAll('.loc').forEach(i => i.checked = elSelectAllLocs.checked);
+        // re-render if some courses are already selected
+        onCourseSelectionChange();
+      });
       document.querySelectorAll('.loc').forEach(el => el.addEventListener('change', syncSelectAllLocs));
       syncSelectAllLocs();
 
-      // Select-all for courses
-      function syncSelectAllCourses(){
+      // Sync select-all courses
+      function syncSelectAllCourses() {
         const courses = Array.from(document.querySelectorAll('.course'));
         const allChecked = courses.length > 0 && courses.every(i => i.checked);
-        if (elSelectAllCourses) elSelectAllCourses.checked = allChecked;
+        elSelectAllCourses.checked = allChecked;
       }
+      elSelectAllCourses.addEventListener('change', () => {
+        const checked = elSelectAllCourses.checked;
+        document.querySelectorAll('.course').forEach(i => i.checked = checked);
+        onCourseSelectionChange();
+      });
+      document.addEventListener('change', e => {
+        if (e.target && e.target.classList && e.target.classList.contains('course')) syncSelectAllCourses();
+      });
 
-      if (elSelectAllCourses){
-        elSelectAllCourses.addEventListener('change', () => {
-          const courses = document.querySelectorAll('.course');
-          courses.forEach(i => { i.checked = elSelectAllCourses.checked; });
-          load();
-          syncSelectAllCourses();
+      // search-as-you-type (client-side filter of sidebar)
+      elCourseSearch.addEventListener('input', debounce(e => {
+        const q = (e.target.value || '').trim().toLowerCase();
+        const items = elCourseList.querySelectorAll('.course-item');
+        items.forEach(it => {
+          it.style.display = q && (it.textContent || '').toLowerCase().indexOf(q) === -1 ? 'none' : '';
         });
-      }
-      document.addEventListener('change', (e)=>{ if (e.target && e.target.classList && e.target.classList.contains('course')) syncSelectAllCourses(); });
-      syncSelectAllCourses();
+      }, 200));
 
-      // Course search
-      if (elCourseSearch){
-        elCourseSearch.addEventListener('input', (e)=>{
-          filterCourseList(e.target.value);
-        });
-      }
+      // debounce helper
+      function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
-      // Initial load
-      //load();
+      // When courses selection changes -> fetch instances for selected courses (batched)
+      let currentLoadId = 0;
+      async function onCourseSelectionChange() {
+        currentLoadId++;
+        const loadId = currentLoadId;
 
-      // --- SMART filterByCourses: uses instanceMatchesLabel + labelForInstance ---
-      function filterByCourses(map){
-        // selected labels from manual sidebar
-        const selectedLabels = Array.from(document.querySelectorAll('.course:checked')).map(i => i.value);
-         if (!selectedLabels || selectedLabels.length === 0) {
-          const empty = {};
-          for (const loc of Object.keys(map || {})) empty[loc] = [];
-          return empty;
-        }
-        const out = {};
-        for (const [loc, rows] of Object.entries(map)) {
-          //console.log(rows);
-          out[loc] = (rows || []).filter(r => {
-            console.log(r);
-            for (const label of selectedLabels) {
-              //console.log(selectedLabels);
-              if (instanceMatchesLabel ? instanceMatchesLabel(r, label) : (normalizeForCompare(r.trainingCategory || '') === normalizeForCompare(label))) return true;
-            }
-            return false;
+        // selected courses
+        const selected = Array.from(document.querySelectorAll('.course:checked')).map(i => i.dataset.id);
+
+        // 🟦 Save selection
+        localStorage.setItem("citc_selected_courses", JSON.stringify(selected));
+
+        if (selected.length === 0) {
+          renderSectionsChunked({
+            "Regency Park": [],
+            "Mount Gambier": [],
+            "Port Pirie": [],
+            "Whyalla": []
           });
+          return;
         }
-        return out;
+
+        // selected locations set
+        const selectedLocations = new Set(Array.from(document.querySelectorAll('.loc:checked')).map(i => i.value));
+
+        elLoadingOverlay.classList.add('visible');
+        elSections.innerHTML = '';
+
+        // batch fetch instances for each selected course (reuse cache)
+        const fetchPromises = selected.map(cid => fetchInstancesForCourse(cid));
+        let allInstances = [];
+        try {
+          const arrays = await Promise.all(fetchPromises);
+          arrays.forEach(arr => { if (Array.isArray(arr)) allInstances.push(...arr); });
+        } catch (err) {
+          console.error('Failed fetching instances', err);
+        }
+
+        // if loadId changed meanwhile — abort rendering to avoid stale UI
+        if (loadId !== currentLoadId) {
+          elLoadingOverlay.classList.remove('visible');
+          return;
+        }
+
+        // filter by locations (client-side)
+        const filtered = allInstances.filter(i => selectedLocations.has(i.location));
+
+        // group by location and render in columns
+        const grouped = groupBy(filtered, r => r.location || 'Unknown');
+
+        // 🟦 NEW: Always include all 4 locations, even if empty
+        const fullMap = {
+          "Regency Park": grouped["Regency Park"] || [],
+          "Mount Gambier": grouped["Mount Gambier"] || [],
+          "Port Pirie": grouped["Port Pirie"] || [],
+          "Whyalla": grouped["Whyalla"] || []
+        };
+
+        // include unexpected locations too
+        for (const key in grouped) {
+          if (!fullMap[key]) fullMap[key] = grouped[key];
+        }
+
+        // render using the guaranteed-full map
+        renderSectionsChunked(fullMap);
+
+        elLoadingOverlay.classList.remove('visible');
       }
 
-      function filterByLocations(map, selectedSet){
-        if (!selectedSet || selectedSet.size === 0) return map;
-        const out = {};
-        for (const [loc, rows] of Object.entries(map)) {
-          if (selectedSet.has(loc)) out[loc] = rows;
+      // Fetch instances for a course with in-memory caching
+      async function fetchInstancesForCourse(courseID) {
+        //const key = `inst::${courseID}`;
+        //const cached = instancesCache.get(key);
+        //if (cached && Date.now() < cached.expiresAt) return cached.data;
+
+        try {
+          const url = new URL(`${API_BASE}/api/course/instances`);
+          url.searchParams.set('courseID', courseID);
+          const res = await fetch(url.toString());
+          const json = await res.json();
+          const arr = json.data || [];
+          //instancesCache.set(key, { data: arr, expiresAt: Date.now() + INSTANCES_CACHE_TTL });
+          return arr;
+        } catch (err) {
+          console.error('fetchInstancesForCourse error', err);
+          return [];
         }
-        return out;
       }
 
-      function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+      // Group helper
+      function groupBy(arr, fn) {
+        return arr.reduce((acc, item) => {
+          const k = fn(item) || 'Unknown';
+          (acc[k] ||= []).push(item);
+          return acc;
+        }, {});
+      }
 
-      function renderSections(map){
+      // Chunked rendering to keep UI responsive on large result sets
+      function renderSectionsChunked(map) {
+        elSections.innerHTML = '';
         const ORDER = ['Regency Park', 'Mount Gambier', 'Port Pirie', 'Whyalla'];
-        const locations = ORDER.filter(loc => Object.prototype.hasOwnProperty.call(map, loc))
-          .concat(Object.keys(map).filter(l => !ORDER.includes(l)));
-        for (const loc of locations) {
+        const locations = ORDER.filter(l => Object.prototype.hasOwnProperty.call(map, l)).concat(Object.keys(map).filter(l => !ORDER.includes(l)));
+
+        // create section shells first (fast)
+        const sections = locations.map(loc => {
           const section = document.createElement('div');
           section.className = 'section';
-          section.innerHTML = `<h2>${loc}</h2><div class="cards"></div>`;
-          const wrap = section.querySelector('.cards');
-          const records = map[loc] || [];
-          if (records.length === 0) {
-            wrap.innerHTML = '<div class="card"><h3>No instances in range</h3></div>';
-          } else {
-            // Group by manual label (labelForInstance uses COURSE_NAMES + aliases)
-            const groups = groupBy(records, r => labelForInstance(r));
-            Object.entries(groups)
-              .sort((a,b)=> a[0].localeCompare(b[0], undefined, { sensitivity: 'base' }))
-              .forEach(([category, rows]) => {
-                wrap.appendChild(courseCard(category, rows));
-              });
-          }
+          section.innerHTML = `<h2>${escapeHtml(loc)}</h2><div class="cards"></div>`;
           elSections.appendChild(section);
+          return { loc, el: section.querySelector('.cards') };
+        });
+
+        // render cards in small chunks using setTimeout to keep UI responsive
+        const tasks = [];
+        for (const {loc, el} of sections) {
+          const rows = map[loc] || [];
+          const groups = groupBy(rows, r => r.courseName || r.raw?.NAME || 'Unknown');
+          const categories = Object.entries(groups).sort((a,b)=> a[0].localeCompare(b[0], undefined, { sensitivity: 'base' }));
+          categories.forEach(([category, rows]) => {
+            tasks.push(() => {
+              const card = courseCard(category, rows);
+              el.appendChild(card);
+            });
+          });
+          if (categories.length === 0) {
+            tasks.push(() => {
+              const emptyCard = document.createElement('div');
+              emptyCard.className = 'card';
+              emptyCard.innerHTML = `<h3 style="text-align:center;padding:12px;">No instances in range</h3>`;
+              el.appendChild(emptyCard);
+            });
+          }
         }
+
+        // run tasks in chunks
+        const CHUNK_SIZE = 8;
+        let i = 0;
+        function runChunk() {
+          const end = Math.min(i + CHUNK_SIZE, tasks.length);
+          for (; i < end; i++) tasks[i]();
+          if (i < tasks.length) {
+            // yield control
+            setTimeout(runChunk, 16);
+          }
+        }
+        runChunk();
       }
-      
-      function courseCard(category, rows){
+
+      // Create course card keeping your original design
+      function courseCard(category, rows) {
         const el = document.createElement('div');
         el.className = 'card';
-        const sorted = [...rows].sort((a,b)=> new Date(a.startDate) - new Date(b.startDate));
-        const rawCost = rows
-  .map(r => Number(r?.cost))
-  .find(v => !isNaN(v) && v > 0) || 0;
-        const citbPrice = rows
-  .map(r => Number(r?.citbPrice))
-  .find(v => !isNaN(v) && v > 0) || 0;
-        const costDisplay =
-          rawCost > 0
-            ? `$${rawCost.toLocaleString()}`
-            : '<span class="price-request">N/A</span>';
-        const citbCostDisplay =
-          citbPrice > 0
-            ? `$${citbPrice.toLocaleString()}`
-            : '<span class="price-request">N/A</span>';
-            
+        const sorted = [...rows].sort((a,b)=> new Date(a.startDate || '') - new Date(b.startDate || ''));
+
+        const rawCost = sorted.map(r => Number(r.cost)).find(v => !isNaN(v) && v > 0) || 0;
+        const citbRaw = sorted.map(r => r.citb).find(v => v !== undefined && v !== null) || null;
+        const citbDisplay = citbRaw ? escapeHtml(String(citbRaw)) : '<span class="price-request">N/A</span>';
+        const costDisplay = rawCost > 0 ? `$${rawCost.toLocaleString()}` : '<span class="price-request">N/A</span>';
+
         const bodyRows = sorted.map(r => {
-          const availableSeats =
-            typeof r.availableSeats === "number"
-              ? r.availableSeats
-              : r.capacity != null && r.numbers != null
-              ? r.capacity - r.numbers
-              : null;
-
+          const availableSeats = (typeof r.availableSeats === 'number') ? r.availableSeats : (r.capacity != null && r.participants != null ? r.capacity - r.participants : null);
           const isFull = isFinite(availableSeats) && Number(availableSeats) <= 0 && Number(r.capacity) > 0;
-          const statusClass = isFull ? "full" : "available";
-          const statusText = isFull ? "Full" : "Available";
-
+          const statusClass = isFull ? 'full' : 'available';
+          const statusText = isFull ? 'Full' : 'Available';
           return `<tr>
             <td>${shortDate(r.startDate)}</td>
             <td>${shortDate(r.endDate)}</td>
@@ -707,10 +449,10 @@
             <td><span class="${statusClass}">${statusText}</span></td>
           </tr>`;
         }).join('');
+
         el.innerHTML = `
           <h3 class="course-title">
-            <span class="course-name">${escapeHtml(category.replace(/,/g, ""))}</span>
-            <!--span class="course-cost">${costDisplay} | ${citbCostDisplay}</span-->
+            <span class="course-name">${escapeHtml(String(category || '')).replace(/,/g, "")}</span>
           </h3>
           <table>
             <thead>
@@ -718,7 +460,7 @@
                 <th>Full</th>
                 <th class="price">${costDisplay}</th>
                 <th>CITB</th>
-                <th class="price">${citbCostDisplay}</th>
+                <th class="price">${citbDisplay}</th>
               </tr>
               <tr>
                 <th>Start</th>
@@ -735,20 +477,38 @@
         return el;
       }
 
-      function groupBy(arr, keyFn){
-        return arr.reduce((acc, item) => {
-          const k = keyFn(item);
-          (acc[k] ||= []).push(item);
-          return acc;
-        }, {});
-      }
+      function getEmptyLocationMap() {
+        return {
+          "Regency Park": [],
+          "Mount Gambier": [],
+          "Port Pirie": [],
+          "Whyalla": []
+        };
+      }      
 
+      document.addEventListener("DOMContentLoaded", () => {
+          renderSectionsChunked(getEmptyLocationMap());
+      });
+      
+
+      // small utils
       function toISODate(d){ return d.toISOString().slice(0,10); }
-      function formatDate(v){ if(!v) return ''; const d = new Date(v); return isNaN(d) ? v : d.toLocaleDateString(); }
-      function money(v){ const n = Number(v||0); return n.toLocaleString(undefined,{ style:'currency', currency:'AUD' }); }
       function shortDate(v){ if(!v) return ''; const d = new Date(v); if(isNaN(d)) return v; const s = d.toLocaleDateString('en-AU',{ day:'2-digit', month:'short'}); return s.replace('.', ''); }
       function num(v){ return (v==null||isNaN(Number(v))) ? '-' : String(v); }
       function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m])); }
+      function stripHTML(str) {         
+        // 1. Remove all HTML tags
+        let cleaned = String(str || "").replace(/<[^>]*>/g, ""); 
+        
+        // 2. Decode HTML entities (amp, lt, gt, quot, apos, numeric, etc.)
+        const txt = document.createElement("textarea");
+        txt.innerHTML = cleaned;
+        cleaned = txt.value;
+
+        return cleaned.trim();
+      }
+      // initial load
+      loadAllCourses();
     </script>
   </body>
-  </html>
+</html>

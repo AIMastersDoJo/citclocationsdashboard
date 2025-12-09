@@ -1,33 +1,20 @@
 ﻿require('dotenv').config();
-
 const express = require('express');
 const axios = require('axios');
 const qs = require('qs');
 const pLimit = require('p-limit');
 
 const app = express();
+const limit = pLimit(10);
 
 const {
   AXC_BASE,
   AXC_API_TOKEN,
   AXC_WS_TOKEN,
-  PORT: PORT_ENV,
-  CONCURRENCY_LIMIT: CONCURRENCY_LIMIT_ENV,
-  CACHE_TTL_SECONDS: CACHE_TTL_SECONDS_ENV,
+  PORT: PORT_ENV
 } = process.env;
 
 const PORT = Number(PORT_ENV) || 3001;
-const CONCURRENCY_LIMIT = Math.max(1, Number(CONCURRENCY_LIMIT_ENV) || 8);
-const CACHE_TTL_SECONDS = CACHE_TTL_SECONDS_ENV; //Math.max(1, Number(CACHE_TTL_SECONDS_ENV) || 3600); // default 1 hour
-
-const DEFAULT_LOCATIONS = ['Mount Gambier', 'Port Pirie', 'Whyalla', 'Regency Park'];
-const VALID_REVENUE_MODES = new Set(['enrolment', 'invoice']);
-
-if (!AXC_BASE || !AXC_API_TOKEN || !AXC_WS_TOKEN) {
-  console.warn('[setup] AXC_BASE, AXC_API_TOKEN, and AXC_WS_TOKEN must be set for upstream requests.');
-}
-
-const concurrencyLimiter = pLimit(CONCURRENCY_LIMIT);
 
 const axiosClient = axios.create({
   baseURL: AXC_BASE,
@@ -36,827 +23,154 @@ const axiosClient = axios.create({
     'Content-Type': 'application/x-www-form-urlencoded',
     Accept: 'application/json',
     apitoken: AXC_API_TOKEN,
-    wstoken: AXC_WS_TOKEN,
-  },
+    wstoken: AXC_WS_TOKEN
+  }
 });
 
-// if (AXC_API_TOKEN && AXC_WS_TOKEN) {
-//   const authHeader = Buffer.from(`${AXC_API_TOKEN}:${AXC_WS_TOKEN}`).toString('base64');
-//   axiosClient.interceptors.request.use((config) => {
-//     const nextConfig = config;
-//     nextConfig.headers = nextConfig.headers || {};
-//     nextConfig.headers.Authorization = `Basic ${authHeader}`;
-//     return nextConfig;
-//   });
-// }
+const CACHE = new Map();
+function setCache(key, value, ttl = 3600_000) {
+  CACHE.set(key, { value, expires: Date.now() + ttl });
+}
+function getCache(key) {
+  const item = CACHE.get(key);
+  if (!item) return null;
+  if (Date.now() > item.expires) {
+    CACHE.delete(key);
+    return null;
+  }
+  return item.value;
+}
 
-const cacheStore = new Map();
+app.use(express.static("public"));
 
-// Serve config dynamically from .env
-app.get('/config.js', (req, res) => {
-  res.type('application/javascript');
-  res.send(`
-    window.DASHBOARD_API_BASE = "${process.env.API_BASE || 'http://localhost:3002'}";
-    window.DASHBOARD_DEMO_MODE = ${process.env.DEMO_MODE === 'true'};
-  `);
+// Health
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", time: new Date().toISOString() });
 });
 
-// Serve a simple static demo UI from / (public/index.html)
-app.use(express.static('public'));
-
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() });
-});
-
-app.get('/api/sync', async (req, res) => {
-  const { start, end } = req.query;
-  const locationsParam = req.query.locations;
-  const revenueMode = req.query.revenueMode ? String(req.query.revenueMode).toLowerCase() : 'enrolment';
-  const demoFlag = String(req.query.demo || '').toLowerCase();
-  const useDemo = demoFlag === '1' || demoFlag === 'true' || (!AXC_BASE || !AXC_API_TOKEN || !AXC_WS_TOKEN);
-
-  if (!isValidDate(start) || !isValidDate(end)) {
-    return res.status(400).json({ error: 'start and end must be provided in YYYY-MM-DD format' });
-  }
-
-  if (!VALID_REVENUE_MODES.has(revenueMode)) {
-    return res.status(400).json({ error: "revenueMode must be 'enrolment' or 'invoice'" });
-  }
-
-  const locations = parseLocations(locationsParam);
-
-  // If demo mode, return mock data in the same shape
-  if (useDemo) {
-    //console.log('[sync] demo mode', { start, end, revenueMode, locations });
-    const data = buildDemoData(start, end, locations);
-    return res.json({
-      cached: false,
-      updated: new Date().toISOString(),
-      range: { start, end },
-      data,
-    });
-  }
-  console.log('[sync] live mode', { start, end, revenueMode, locations });
-  const cacheKey = buildCacheKey(start, end, locations, revenueMode);
-  const cached = getFromCache(cacheKey);
-
+/* ----------------------------------------------------------
+   1) GET ALL COURSES with type=w & displayLength=1000
+---------------------------------------------------------- */
+app.get("/api/courses", async (req, res) => {
+  const cacheKey = "courses::all";
+  const cached = getCache(cacheKey);
   if (cached) {
-    return res.json({
-      cached: true,
-      updated: cached.updated,
-      range: { start, end },
-      data: cached.data,
+    return res.json({ cached: true, data: cached });
+  }
+
+  try {
+    const response = await axiosClient.get('/courses', {
+      params: {
+        type: 'w',
+        displayLength: 1000
+      }
     });
-  }
 
-  try {
-    const data = {};
-    for (const location of locations) {
-      const instances = await fetchInstances(location, start, end);
-      //console.log(`[sync] fetched ${instances.length} instances for location: ${location}`);
-      
-      const cards = await Promise.all(
-        instances.map((instance) =>
-          buildCard(instance, revenueMode).catch((error) => {
-            console.error(`[sync] Failed to build card for instance`, { location, error: sanitiseError(error) });
-            return null;
-          })
-        )
-      );
-      data[location] = cards.filter(Boolean);
-    }
+    const rows = normalize(response.data);
 
-    const updated = new Date().toISOString();
-      const payload = {
-      cached: false,
-      updated,
-      range: { start, end },
-      data
-    };
-    setCache(cacheKey, { data, updated });
-    // console.log('[FINAL PAYLOAD]', JSON.stringify(payload, null, 2));
-    res.json(payload);
-  } catch (error) {
-    console.error('[sync] Upstream error', sanitiseError(error));
-    res.status(getStatusCode(error)).json({ error: 'Failed to synchronise data' });
-  }
-});
+    const mapped = rows.map(r => ({
+      id: r.ID,
+      name: r.SHORTDESCRIPTION || r.DESCRIPTION || r.NAME || `Course ${r.ID}`
+    }));
 
-app.listen(PORT, () => {
-  console.log(`CITC proxy listening on port ${PORT}`);
-});
+    mapped.sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
 
-function buildCacheKey(start, end, locations, revenueMode) {
-  return [start, end, locations.join('|'), revenueMode].join('::');
-}
+    setCache(cacheKey, mapped, 12 * 3600 * 1000); // 12 hours
 
-function setCache(key, value) {
-  cacheStore.set(key, { ...value, expiresAt: Date.now() + CACHE_TTL_SECONDS * 1000 });
-}
+    return res.json({ cached: false, data: mapped });
 
-function getFromCache(key) {
-  const entry = cacheStore.get(key);
-  if (!entry) {
-    return null;
-  }
-  if (Date.now() > entry.expiresAt) {
-    cacheStore.delete(key);
-    return null;
-  }
-  return { data: entry.data, updated: entry.updated };
-}
-
-
-/**
- * Fetch course instances for a location within the provided date range.
- * @param {string} location
- * @param {string} start
- * @param {string} end
- * @returns {Promise<Array<Object>>}
- */
-async function fetchInstances(location, start, end) {
-
-  const body = qs.stringify({
-    type: 'w',
-    location,
-    startDate_min: start,
-    finishDate_max: end,
-    purgeCache: true,
-    displayLength: 10000,
-  });
-
-  const response = await requestWithRetry(() =>
-    axiosClient.post('/course/instance/search', body)
-  );
-
-  //console.log('[API RESPONSE]', location, response.data); 
-  /*const fs = require('fs');
-
-  fs.appendFile('sync.log', `Location: ${location} \n ${JSON.stringify(response.data)} \n\n`, (err) => {
-      if (err) throw err;
-  });*/
-  return normaliseArrayPayload(response.data);
-}
-
-/**
- * Build a dashboard card from an upstream course instance.
- * @param {Object} instance
- * @param {'enrolment'|'invoice'} revenueMode
- * @returns {Promise<Object|null>}
- */
-async function buildCard(instance, revenueMode) {
-  /*
-  const fs = require('fs');
-
-  fs.appendFile('sync.log', `\n${JSON.stringify(instance)}\n`, (err) => {
-      if (err) throw err;
-  });*/
-  const instanceID = getInstanceIdentifier(instance);
-  if (!instanceID) {
-    console.warn('[sync] Skipping instance without identifier');
-    return null;
-  }
-
-  const { enrolments, enrolmentRevenue, invoiceRevenue } = await fetchEnrolmentInfo(instanceID, revenueMode);
-
-
-  const trainingCategoryRaw =
-    pickFirstString(instance, ['TRAININGCATEGORY', 'TRAINING_CATEGORY', 'ACTIVITYNAME', 'COURSETITLE', 'Name']) || 'Unknown';
-
-  const cleanName = trainingCategoryRaw.trim().replace(/[,;]+$/, '');
-
-  const startDateRaw = pickFirstString(instance, ['STARTDATE', 'START', 'START_DATE', 'STARTTIME']) || null;
-  const endDateRaw = pickFirstString(instance, ['ENDDATE', 'FINISHDATE', 'END', 'END_DATE', 'FINISHTIME']) || null;
-
-  const formatDate = (str) => {
-    if (!str) return null;
-    // handle both "2025-10-28 08:00:00" and "2025-10-28T08:00:00Z"
-    const dateOnly = str.split(' ')[0].split('T')[0];
-    return dateOnly;
-  };
-
-  const startDate = formatDate(startDateRaw);
-  const endDate = formatDate(endDateRaw);
-
-  const numbers =
-    pickFirstNumber(instance, ['PARTICIPANTS', 'ENROLMENTS', 'TOTALENROLMENTS', 'TOTALENROLLED']) ??
-    enrolments.length;
-
-  const capacity = pickFirstNumber(instance, ['MAXPARTICIPANTS', 'CAPACITY', 'MAXENROLMENTS', 'CLASSCAPACITY']) ?? null;
-
-  const availableSeats =
-    pickFirstNumber(instance, ['PARTICIPANTVACANCY', 'VACANCY', 'AVAILABLESEATS']) ??
-    (capacity != null && numbers != null ? capacity - numbers : null);
-
-  const revenue =
-    revenueMode === 'invoice'
-      ? invoiceRevenue ?? enrolmentRevenue
-      : enrolmentRevenue;
-  
-  const cost =
-    pickFirstNumber(instance, ['COST', 'cost', 'PRICE', 'Price', 'FEE', 'Fee']) ?? null;
-
-  // ---------- normalize training/category display name ----------
-  function cleanNameRaw(s){
-      if (!s && s !== 0) return '';
-      return String(s)
-        .trim()
-        .replace(/\band\b/gi, '&')   // "G and P" -> "G & P"
-        .replace(/\s*&\s*/g, '&')  
-        .replace(/[.,;\/\s]+$/g, '')
-        .replace(/\s+/g, ' ')
-        .replace(/[“”"']/g, '')    
-        .toLowerCase();
-    }
-
-  const displayNameMapRaw= {
-    "G&P Hoist": "Personnel Hoist",
-    "EWP": "Elevating Work Platform (EWP)",
-    "operate elevating work platform - (scissor lift)": "Scissor Lift",
-    "operate elevating work platform - (scissor lift&boom lift)": "Scissor Lift & Boom Lift",
-    "operate elevating work platform - (scissor lift, boom lift&vertical lift)": "Scissor Lift, Boom Lift & Vertical Lift",
-    "Operate Elevating Work Platform - (Scissor Lift & Vertical Lift)": "Scissor Lift & Vertical Lift",
-    "MPTV": "Multi Purpose Tool Vehicle",
-    "Multi Purpose Tool Vehicle": "Multi Purpose Tool Vehicle",
-    "Basic Rigging": "Basic Rigging",
-    "Silicosis Awareness": "Silicosis",
-    "Silicosis": "Silicosis",
-    "Forklift Entry": "Forklift (Entry Level)",
-    "Forklift (Entry)": "Forklift (Entry Level)",
-    "Forklift (Entry Level)": "Forklift (Entry Level)",
-    "Enter & Work in Confined Spaces (Combo) or Confined Spaces (Combo)": "Enter & Work in Confined Spaces (Combo)",
-    "Confined Spaces (Combo)": "Enter & Work in Confined Spaces (Combo)",
-    "Dogging": "Dogging",
-    "Excavator": "Excavator",
-    "Dangerous Goods": "Dangerous Goods",
-    "White Card": "White Card",
-    "Front End Loader": "Front End Loader",
-  };
-
-  // cleaned key map 
- const displayNameMap = {};
-  Object.entries(displayNameMapRaw).forEach(([k, v]) => {
-    displayNameMap[ cleanNameRaw(k) ] = v;
-  });
-
-  // source strings from API
-  const rawCourseName = cleanNameRaw(pickFirstString(instance, ['COURSENAME','NAME','COURSE_NAME']) || '');
-  const rawCategory   = cleanNameRaw(pickFirstString(instance, ['TRAININGCATEGORY','TRAINING_CATEGORY','ACTIVITYNAME','COURSETITLE']) || '');
-
-  // prefer course name then category; map if we have a friendly name
-  let trainingCategoryKey = rawCourseName || rawCategory || 'unknown';
-  const mapped = displayNameMap[trainingCategoryKey] || displayNameMap[rawCourseName] || displayNameMap[rawCategory];
-  const trainingCategory = mapped || (trainingCategoryKey === 'unknown' ? 'Unknown' : trainingCategoryKey);
-
-  instance.trainingCategory = trainingCategory;
-
-  // --- NEW: fetch CITB price UDFs for this instance ---
-  // We'll try to fetch UDFs but don't fail the whole card if it errors.
-  let citbPrice = null;
-  let citbPriceRaw = null;
-  try {
-    const udfs = await fetchInstanceUDFs(instanceID);
-    // look for likely matching UDF names
-    const rawValue = findUdfValue(udfs, ['CITB_PRICE', 'citb price', 'citb_price', 'citb', 'CITB Price']);
-    if (rawValue != null) {
-      citbPriceRaw = String(rawValue);
-      // try to parse numeric value (strip currency symbols)
-      const parsed = parseNumber(rawValue);
-      citbPrice = parsed !== null ? parsed : null;
-    }
   } catch (err) {
-    // non-fatal: just log
-    console.warn('[udf] Failed to fetch UDFs for instance', instanceID, sanitiseError(err));
+    console.error("[/api/courses] error", err?.message || err);
+    res.status(500).json({ error: "Failed to load courses" });
   }
-  
-  return {
-    id: instanceID,
-    instanceID,
-    trainingCategory,
-    trainingCategoryName: trainingCategory, // add alias
-    start: startDate,                       // alias for frontend
-    startDate,
-    end: endDate,
-    endDate,
-    numbers,
-    booked: numbers,                        // alias for frontend
-    capacity,
-    availableSeats,
-    revenue,
-    cost,
-    CourseName: rawCourseName, 
-    Category: rawCategory,
-    // CITB fields added
-    citbPrice,      // numeric value when parseable
-    citbPriceRaw,   // raw string if present
-  };
-}
+});
 
-/**
- * Fetch enrolments and optional invoice totals for an instance.
- * @param {string|number} instanceID
- * @param {'enrolment'|'invoice'} revenueMode
- */
-async function fetchEnrolmentInfo(instanceID, revenueMode) {
-  const response = await requestWithRetry(() =>
-    concurrencyLimiter(() => axiosClient.get('/course/enrolments', { params: { type: 'w', instanceID } }))
-  );
-  const enrolments = normaliseArrayPayload(response.data);
-  // console.log('[ENROLMENT DATA]', instanceID, enrolments[0]);
+/* ----------------------------------------------------------
+   2) GET INSTANCES FOR A COURSE (ALL, NO DATE FILTER)
+---------------------------------------------------------- */
+app.get("/api/course/instances", async (req, res) => {
+  const courseID = req.query.courseID;
+  if (!courseID) return res.status(400).json({ error: "courseID is required" });
 
- const enrolmentRevenue = enrolments.reduce((total, enrolment) => {
-    const directValue = parseNumber(
-      pickFirstValue(enrolment, [
-        'AMOUNTPAID',
-        'AmountPaid',
-        'amountPaid',
-        'cost',
-        'COST',
-        'Cost',
-        'FEE',
-        'AMOUNT',
-      ])
-    ) || 0;
+  //const cacheKey = `instances_${courseID}`;
+  //const cached = getCache(cacheKey);
+  //if (cached) return res.json({ cached: true, data: cached });
 
-    // Also check nested activity payments if any
-    const activities = Array.isArray(enrolment.ACTIVITIES) ? enrolment.ACTIVITIES : [];
-    const activitySum = activities.reduce((acc, act) => {
-      const paid = parseNumber(
-        pickFirstValue(act, ['AMOUNTPAID', 'AmountPaid', 'amountPaid', 'cost', 'Cost'])
-      );
-      return acc + (paid || 0);
-    }, 0);
-
-    return total + directValue + activitySum;
-  }, 0);
-
-  let invoiceRevenue = null;
-
-  if (revenueMode === 'invoice') {
-    const invoiceIds = collectInvoiceIds(enrolments);
-    if (invoiceIds.size > 0) {
-      const invoiceTotals = await Promise.all(
-        Array.from(invoiceIds).map((invoiceId) =>
-          requestWithRetry(() =>
-            concurrencyLimiter(() => axiosClient.get(`/accounting/invoice/${encodeURIComponent(invoiceId)}`))
-          )
-            .then((resp) => invoiceTotalFromPayload(resp.data))
-            .catch((error) => {
-              console.error('[invoice] Failed to fetch invoice', { invoiceId, error: sanitiseError(error) });
-              return null;
-            })
-        )
-      );
-
-      const summed = invoiceTotals
-        .filter((val) => typeof val === 'number' && !Number.isNaN(val))
-        .reduce((acc, val) => acc + val, 0);
-      if (summed > 0) {
-        invoiceRevenue = summed;
-      }
-    }
-  }
-
-  return { enrolments, enrolmentRevenue, invoiceRevenue };
-}
-
-function collectInvoiceIds(enrolments) {
-  const fields = ['invoiceNum', 'InvoiceNum', 'INVOICENUM', 'invoiceID', 'InvoiceID', 'INVOICEID', 'invoiceNumber', 'INVOICENUMBER'];
-  const ids = new Set();
-
-  enrolments.forEach((enrolment) => {
-    fields.forEach((field) => {
-      const value = enrolment[field];
-      if (value == null) {
-        return;
-      }
-      if (Array.isArray(value)) {
-        value.forEach((item) => addInvoiceId(ids, item));
-      } else {
-        addInvoiceId(ids, value);
-      }
-    });
-  });
-
-  return ids;
-}
-
-function addInvoiceId(set, value) {
-  const trimmed = String(value).trim();
-  if (trimmed) {
-    set.add(trimmed);
-  }
-}
-
-/**
- * Attempt to derive an invoice total from multiple payload shapes.
- * @param {*} payload
- * @returns {number|null}
- */
-function invoiceTotalFromPayload(payload) {
-  const candidate = normaliseInvoicePayload(payload);
-  if (!candidate) {
-    return null;
-  }
-
-  const totalFields = ['TOTALAMOUNT', 'TOTAL', 'TOTALGROSS', 'TOTALNET', 'TOTALDUE', 'TOTALPAID', 'GrossTotal', 'NetTotal'];
-  for (const field of totalFields) {
-    const value = parseNumber(candidate[field]);
-    if (value) {
-      return value;
-    }
-  }
-
-  const lines =
-    candidate.INVOICELINES ||
-    candidate.invoiceLines ||
-    candidate.lines ||
-    candidate.LINES ||
-    candidate.LineItems ||
-    candidate.lineItems ||
-    candidate.ITEMS ||
-    candidate.items ||
-    [];
-
-  const lineArray = Array.isArray(lines) ? lines : [];
-
-  const lineSum = lineArray.reduce((sum, line) => sum + deriveLineTotal(line), 0);
-  if (lineSum > 0) {
-    return lineSum;
-  }
-
-  const amount = parseNumber(candidate.AMOUNT || candidate.Amount);
-  if (amount) {
-    return amount;
-  }
-
-  return null;
-}
-
-function deriveLineTotal(line) {
-  if (!line) {
-    return 0;
-  }
-
-  const totalFields = ['TOTAL', 'TOTALGROSS', 'LINEAMOUNT', 'LINE_TOTAL', 'EXTENDEDAMOUNT', 'Amount'];
-  for (const field of totalFields) {
-    const value = parseNumber(line[field]);
-    if (value) {
-      return value;
-    }
-  }
-
-  const qty = parseNumber(line.QTY || line.QUANTITY || line.qty || line.quantity) || 1;
-  const price =
-    parseNumber(line.UNITPRICEGROSS || line.UNITPRICE || line.UNITPRICEINC || line.PRICE || line.Price || line.RATE || line.Rate) ||
-    0;
-
-  return qty * price;
-}
-
-/**
- * Run a request with retry and exponential backoff for transient issues.
- * @param {() => Promise<*>} factory
- * @param {number} retries
- */
-async function requestWithRetry(factory, retries = 2) {
-  let attempt = 0;
-  let delay = 200;
-  while (true) {
-    try {
-      return await factory();
-    } catch (error) {
-      const status = error.response?.status;
-      const shouldRetry = (!status || status >= 500) && attempt < retries;
-      if (!shouldRetry) {
-        throw error;
-      }
-      await wait(delay);
-      delay *= 2;
-      attempt += 1;
-    }
-  }
-}
-
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isValidDate(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function parseLocations(param) {
-  if (!param) {
-    return DEFAULT_LOCATIONS.slice();
-  }
-  const parts = String(param)
-    .split('|')
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  return parts.length > 0 ? parts : DEFAULT_LOCATIONS.slice();
-}
-
-function normaliseArrayPayload(payload) {
-  if (!payload) {
-    return [];
-  }
-
-  if (Array.isArray(payload)) {
-    return payload;
-  }
-
-  if (Array.isArray(payload.DATA)) {
-    return payload.DATA;
-  }
-
-  if (Array.isArray(payload.data)) {
-    return payload.data;
-  }
-
-  if (Array.isArray(payload.rows)) {
-    return payload.rows;
-  }
-
-  if (Array.isArray(payload.results)) {
-    return payload.results;
-  }
-
-  if (typeof payload === 'object') {
-    const firstArray = Object.values(payload).find(Array.isArray);
-    if (Array.isArray(firstArray)) {
-      return firstArray;
-    }
-  }
-
-  return [];
-}
-
-function normaliseInvoicePayload(payload) {
-  if (!payload) {
-    return null;
-  }
-
-  if (Array.isArray(payload) && payload.length > 0) {
-    return payload[0];
-  }
-
-  if (payload.DATA) {
-    if (Array.isArray(payload.DATA) && payload.DATA.length > 0) {
-      return payload.DATA[0];
-    }
-    if (typeof payload.DATA === 'object' && payload.DATA !== null) {
-      return payload.DATA;
-    }
-  }
-
-  if (payload.data) {
-    if (Array.isArray(payload.data) && payload.data.length > 0) {
-      return payload.data[0];
-    }
-    if (typeof payload.data === 'object' && payload.data !== null) {
-      return payload.data;
-    }
-  }
-
-  if (typeof payload === 'object') {
-    return payload;
-  }
-
-  return null;
-}
-
-function getInstanceIdentifier(instance) {
-  return (
-    instance?.INSTANCEID ??
-    instance?.instanceID ??
-    instance?.InstanceID ??
-    instance?.ID ??
-    instance?.id ??
-    instance?.InstanceId ??
-    null
-  );
-}
-
-function pickFirstString(object, keys) {
-  for (const key of keys) {
-    const value = object?.[key];
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim();
-    }
-  }
-  return null;
-}
-
-function pickFirstNumber(object, keys) {
-  for (const key of keys) {
-    const num = parseNumber(object?.[key]);
-    if (num !== null && !Number.isNaN(num)) {
-      return num;
-    }
-  }
-  return null;
-}
-
-function pickFirstValue(object, keys) {
-  for (const key of keys) {
-    if (object && Object.prototype.hasOwnProperty.call(object, key)) {
-      return object[key];
-    }
-  }
-  return null;
-}
-
-function parseNumber(value) {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  const numeric = Number(String(value).replace(/[^0-9.-]/g, ''));
-  return Number.isFinite(numeric) ? numeric : null;
-}
-
-function sanitiseError(error) {
-  return {
-    status: error?.response?.status ?? null,
-    message: error?.message ?? 'Unknown error',
-  };
-}
-
-function getStatusCode(error) {
-  const status = error?.response?.status;
-  if (status && status >= 400 && status < 600) {
-    return status;
-  }
-  return 502;
-}
-
-/**
- * Build demo data that mimics the dashboard cards for the three locations.
- * Dates and values loosely match the example screenshot.
- */
-function buildDemoData(start, end, locations) {
-  const within = (s) => !s || !end || !start ? true : true; // keep simple for demo
-  const sessionRows = [
-    { startDate: '2024-04-22', endDate: '2024-04-26', numbers: 3, capacity: 10 },
-    { startDate: '2024-10-27', endDate: '2024-10-31', numbers: 8, capacity: 10 },
-    { startDate: '2024-11-20', endDate: '2024-11-24', numbers: 10, capacity: 10 },
-  ];
-
-  const coursesByLocation = {
-    Regency: ['Dogging', 'White Card (General Construction Induction)', 'Forklift'],
-    'Mount Gambier': ['Dogging', 'Forklift', 'CN Crane'],
-    'Port Pirie': ['Dogging', 'Forklift', 'CN Crane'],
-    'Whyalla': ['Skid Steer', 'Forklift', 'Dogging'],
-  };
-
-  const priceFull = 1795; // as per screenshot labels
-
-  const result = {};
-  for (const loc of locations) {
-    const courseList = coursesByLocation[loc] || ['ForkLift'];
-    const cards = [];
-    let idCounter = 1000;
-    for (const course of courseList) {
-      for (const row of sessionRows) {
-        if (!within(row.startDate)) continue;
-        const revenue = row.numbers * priceFull;
-        cards.push({
-          instanceID: `${loc}-${course}-${idCounter++}`,
-          trainingCategory: course,
-          startDate: row.startDate,
-          endDate: row.endDate,
-          numbers: row.numbers,
-          capacity: row.capacity,
-          revenue,
-        });
-      }
-    }
-    result[loc] = cards;
-  }
-  return result;
-}
-
-/* ---------------------------
-   New helper functions for UDF/CITB price
-   --------------------------- */
-
-/**
- * Fetch instance UDFs from aXcelerate.
- * Try GET /course/instance/{id}/udfs - if your aXcelerate variant uses a different path,
- * adjust it here.
- * Returns normalized array (could be empty).
- */
-async function fetchInstanceUDFs(instanceID) {
-  const response = await requestWithRetry(() =>
-    concurrencyLimiter(() =>
-      axiosClient.get('/course/instance/detail', {
+  try {
+    const r = await limit(() =>
+      axiosClient.get("/course/instances", {
         params: {
-          instanceID,
-          type: 'w'
+          id: courseID,
+          type: "w"
         }
       })
-    )
-  );
-  //console.log('[UDF RESPONSE]', instanceID, response.data);
-  return extractUdfsFromDetail(response.data);
+    );
+
+    const rows = normalize(r.data);
+
+    const mapped = rows.map(inst => {
+      return {
+        instanceID: inst.INSTANCEID,
+        courseName: inst.NAME,
+        location: normalizeLocation(inst.LOCATION),
+        startDate: (inst.STARTDATE || "").split(" ")[0],
+        endDate: (inst.FINISHDATE || "").split(" ")[0],
+        capacity: inst.MAXPARTICIPANTS,
+        numbers: inst.PARTICIPANTS,
+        availableSeats: inst.PARTICIPANTVACANCY,
+        cost: inst.COST,
+        citb: inst.CUSTOMFIELD_CITB_PRICE 
+          ? String(inst.CUSTOMFIELD_CITB_PRICE).replace(/\s+/g, '') 
+          : null
+      };
+    });
+
+    //setCache(cacheKey, mapped, 10 * 60_000);
+
+    res.json({ cached: false, data: mapped });
+
+  } catch (err) {
+    console.error("[instances]", err.response?.data || err.message);
+    res.status(500).json({ error: "Failed to load instances" });
+  }
+});
+
+const NORMALIZE_LOCATION = {
+  "REGENCY PARK": "Regency Park",
+  "REGENCY": "Regency Park",
+  "CITC - Regency Park": "Regency Park",
+
+  "PORT PIRIE": "Port Pirie",
+  "PIRIE": "Port Pirie",
+
+  "WHYALLA NORRIE": "Whyalla",
+  "WHYALLA": "Whyalla",
+  "WHYALLA CITY COUNCIL": "Whyalla",
+
+  "MOUNT GAMBIER": "Mount Gambier",
+  "GAMBIER": "Mount Gambier"
+};
+
+function normalizeLocation(loc) {
+  if (!loc) return "Unknown";
+  const key = loc.trim().toUpperCase();
+  return NORMALIZE_LOCATION[key] || loc;
 }
 
-function extractUdfsFromDetail(detail) {
-  if (!detail || typeof detail !== 'object') return [];
-
-  const results = [];
-
-  // 1) Extract all CUSTOMFIELD_ keys (your primary storage)
-  for (const [key, value] of Object.entries(detail)) {
-    if (key.startsWith('CUSTOMFIELD_')) {
-      results.push({
-        fieldName: key.replace('CUSTOMFIELD_', ''), // e.g. "CITB_PRICE"
-        value: value
-      });
-    }
-  }
-
-  // 2) (optional fallback) extract fields from USERDEFINEDFIELDS if they exist
-  if (detail.USERDEFINEDFIELDS && typeof detail.USERDEFINEDFIELDS === 'object') {
-    for (const [key, value] of Object.entries(detail.USERDEFINEDFIELDS)) {
-      results.push({ fieldName: key, value });
-    }
-  }
-
-  // 3) Extract from activityData if present
-  if (Array.isArray(detail.activityData)) {
-    for (const act of detail.activityData) {
-      if (!act || typeof act !== 'object') continue;
-
-      // aX sometimes includes CUSTOMFIELD_ inside activities as well
-      for (const [key, value] of Object.entries(act)) {
-        if (key.startsWith('CUSTOMFIELD_')) {
-          results.push({
-            fieldName: key.replace('CUSTOMFIELD_', ''),
-            value: value
-          });
-        }
-      }
-
-      if (act.UDFs) {
-        for (const uf of act.UDFs) {
-          results.push(uf);
-        }
-      }
-
-      if (act.USERDEFINEDFIELDS) {
-        for (const [key, value] of Object.entries(act.USERDEFINEDFIELDS)) {
-          results.push({ fieldName: key, value });
-        }
-      }
-    }
-  }
-  //console.log('[results]', results);
-  return results;
+/* ----------------------------------------------------------
+   Utility
+---------------------------------------------------------- */
+function normalize(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload.DATA)) return payload.DATA;
+  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.rows)) return payload.rows;
+  const arr = Object.values(payload).find(Array.isArray);
+  return Array.isArray(arr) ? arr : [];
 }
 
-/**
- * Search an array of UDF objects for a field name and return its value.
- * Be flexible: UDF objects may have shapes like:
- *  { fieldName: 'CITB Price', value: '340' }
- *  { name: 'CITB Price', VALUE: '340' }
- *  { DisplayName: 'CITB', Value: '340' }
- */
-function findUdfValue(udfsArray, candidates = []) {
-  if (!Array.isArray(udfsArray) || udfsArray.length === 0) return null;
-  const lowerCandidates = candidates.map((c) => String(c).toLowerCase());
-  for (const u of udfsArray) {
-    if (!u || typeof u !== 'object') continue;
-    // potential name keys
-    const nameKeys = ['fieldName', 'fieldname', 'name', 'displayName', 'DisplayName', 'label', 'Label', 'FieldName'];
-    const valueKeys = ['value', 'Value', 'VALUE', 'val', 'Val'];
-    // check name keys
-    const name = nameKeys.map(k => u[k]).find(Boolean);
-    if (typeof name === 'string') {
-      const nameLower = name.toLowerCase();
-      // exact or contains match
-      if (lowerCandidates.some(c => c === nameLower || nameLower.includes(c))) {
-        // return first value key found
-        const val = valueKeys.map(k => u[k]).find(v => v !== undefined);
-        if (val !== undefined) return val;
-      }
-    }
-    // fallback: sometimes key/value pairs are direct (like { 'CITB Price': '340' })
-    for (const [k, v] of Object.entries(u)) {
-      if (typeof k === 'string' && lowerCandidates.some(c => k.toLowerCase() === c || k.toLowerCase().includes(c))) {
-        return v;
-      }
-    }
-  }
-  // as a last resort - search any top-level property keys for candidate names
-  for (const u of udfsArray) {
-    for (const c of lowerCandidates) {
-      const matchingKey = Object.keys(u).find(k => typeof k === 'string' && k.toLowerCase().includes(c));
-      if (matchingKey) {
-        return u[matchingKey];
-      }
-    }
-  }
-  return null;
-}
+
+app.listen(PORT, () => {
+  console.log("CITC proxy running on port", PORT);
+});

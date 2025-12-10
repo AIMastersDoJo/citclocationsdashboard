@@ -188,19 +188,19 @@
 
       // Fetch all courses
       async function loadAllCourses() {
-        const fromLocal = loadCoursesFromLocal();
+        /*const fromLocal = loadCoursesFromLocal();
         if (fromLocal) {
           renderCourseList(fromLocal);
           elCache.textContent = 'Courses: cached (local)';
           return fromLocal;
-        }
+        }*/
 
         try {
           elCache.textContent = 'Loading courses…';
           const r = await fetch(`${API_BASE}/api/courses`);
           const json = await r.json();
           const data = json.data || [];
-          saveCoursesToLocal(data);
+          //saveCoursesToLocal(data);
           renderCourseList(data);
           elCache.textContent = json.cached ? 'Courses: cached (server)' : 'Courses: fresh';
           return data;
@@ -215,7 +215,6 @@
       // Render sidebar course list (checkboxes)
       function renderCourseList(courses) {
         // preserve previous checked state
-        //const previouslyChecked = new Set(Array.from(document.querySelectorAll('.course:checked')).map(i => i.dataset.id));
         const saved = JSON.parse(localStorage.getItem("citc_selected_courses") || "[]");
         const savedSet = new Set(saved);
 
@@ -225,6 +224,7 @@
           return `<label class="course-item">
               <input type="checkbox" class="course"
                     data-id="${escapeHtml(c.id)}"
+                    data-code="${escapeHtml(c.code)}"
                     value="${escapeHtml(cleanName)}"
                     ${checked} />
               ${escapeHtml(cleanName)}
@@ -284,8 +284,9 @@
         const loadId = currentLoadId;
 
         // selected courses
-        const selected = Array.from(document.querySelectorAll('.course:checked')).map(i => i.dataset.id);
-
+        const selected = Array.from(document.querySelectorAll('.course:checked')).map(i => i.dataset.id + "||" + i.dataset.code);
+        //const selectedCodes = Array.from(document.querySelectorAll('.course:checked')).map(i => i.dataset.code);
+        
         // 🟦 Save selection
         localStorage.setItem("citc_selected_courses", JSON.stringify(selected));
 
@@ -347,7 +348,9 @@
       }
 
       // Fetch instances for a course with in-memory caching
-      async function fetchInstancesForCourse(courseID) {
+      async function fetchInstancesForCourse(selectedCourse) {
+        const courseID = selectedCourse.split("||")[0];
+        const courseCODE = selectedCourse.split("||")[1];
         //const key = `inst::${courseID}`;
         //const cached = instancesCache.get(key);
         //if (cached && Date.now() < cached.expiresAt) return cached.data;
@@ -355,6 +358,7 @@
         try {
           const url = new URL(`${API_BASE}/api/course/instances`);
           url.searchParams.set('courseID', courseID);
+          url.searchParams.set('courseCODE', courseCODE);
           const res = await fetch(url.toString());
           const json = await res.json();
           const arr = json.data || [];
@@ -396,7 +400,8 @@
           const rows = map[loc] || [];
           const groups = groupBy(rows, r => r.courseName || r.raw?.NAME || 'Unknown');
           const categories = Object.entries(groups).sort((a,b)=> a[0].localeCompare(b[0], undefined, { sensitivity: 'base' }));
-          categories.forEach(([category, rows]) => {
+          
+          categories.forEach(([category, rows]) => {            
             tasks.push(() => {
               const card = courseCard(category, rows);
               el.appendChild(card);
@@ -430,10 +435,11 @@
       function courseCard(category, rows) {
         const el = document.createElement('div');
         el.className = 'card';
-        const sorted = [...rows].sort((a,b)=> new Date(a.startDate || '') - new Date(b.startDate || ''));
+        const sorted = [...rows].sort((a,b)=> new Date(a.startDate || '') - new Date(b.startDate || ''));        
+        const code = sorted.map(r => r.courseCode).find(v => v !== undefined && v !== null) || null;
 
         const rawCost = sorted.map(r => Number(r.cost)).find(v => !isNaN(v) && v > 0) || 0;
-        const citbRaw = sorted.map(r => r.citb).find(v => v !== undefined && v !== null) || null;
+        const citbRaw = sorted.map(r => r.citb).find(v => v !== undefined && v !== null) || null;        
         const citbDisplay = citbRaw ? escapeHtml(String(citbRaw)) : '<span class="price-request">N/A</span>';
         const costDisplay = rawCost > 0 ? `$${rawCost.toLocaleString()}` : '<span class="price-request">N/A</span>';
 
@@ -452,7 +458,7 @@
 
         el.innerHTML = `
           <h3 class="course-title">
-            <span class="course-name">${escapeHtml(String(category || '')).replace(/,/g, "")}</span>
+            <span class="course-name">${escapeHtml(String(category || '')).replace(/,/g, "")} - ${escapeHtml(String(code || '')).replace(/,/g, "")}</span>
           </h3>
           <table>
             <thead>

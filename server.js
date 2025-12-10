@@ -52,16 +52,17 @@ app.get("/api/health", (req, res) => {
    1) GET ALL COURSES with type=w & displayLength=1000
 ---------------------------------------------------------- */
 app.get("/api/courses", async (req, res) => {
-  const cacheKey = "courses::all";
+  /*const cacheKey = "courses::all";
   const cached = getCache(cacheKey);
   if (cached) {
     return res.json({ cached: true, data: cached });
-  }
+  }*/
 
   try {
     const response = await axiosClient.get('/courses', {
       params: {
         type: 'w',
+        isActive: true,
         displayLength: 1000
       }
     });
@@ -70,12 +71,13 @@ app.get("/api/courses", async (req, res) => {
 
     const mapped = rows.map(r => ({
       id: r.ID,
+      code: r.CODE,
       name: r.SHORTDESCRIPTION || r.DESCRIPTION || r.NAME || `Course ${r.ID}`
     }));
 
     mapped.sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
 
-    setCache(cacheKey, mapped, 12 * 3600 * 1000); // 12 hours
+    // setCache(cacheKey, mapped, 1 * 3600 * 1000); // 12 hours
 
     return res.json({ cached: false, data: mapped });
 
@@ -90,6 +92,7 @@ app.get("/api/courses", async (req, res) => {
 ---------------------------------------------------------- */
 app.get("/api/course/instances", async (req, res) => {
   const courseID = req.query.courseID;
+  const courseCODE = req.query.courseCODE;
   if (!courseID) return res.status(400).json({ error: "courseID is required" });
 
   //const cacheKey = `instances_${courseID}`;
@@ -111,6 +114,7 @@ app.get("/api/course/instances", async (req, res) => {
     const mapped = rows.map(inst => {
       return {
         instanceID: inst.INSTANCEID,
+        courseCode: courseCODE,
         courseName: inst.NAME,
         location: normalizeLocation(inst.LOCATION),
         startDate: (inst.STARTDATE || "").split(" ")[0],

@@ -246,9 +246,16 @@
       elSelectAllLocs.addEventListener('change', () => {
         document.querySelectorAll('.loc').forEach(i => i.checked = elSelectAllLocs.checked);
         // re-render if some courses are already selected
+        syncSelectAllLocs();
         onCourseSelectionChange();
+        console.log('Select all locations changed');
       });
-      document.querySelectorAll('.loc').forEach(el => el.addEventListener('change', syncSelectAllLocs));
+      
+      document.querySelectorAll('.loc').forEach(el => el.addEventListener('change', () => {
+          syncSelectAllLocs();
+          onCourseSelectionChange();   // 🔥 re-run the instance loading
+      }));
+      
       syncSelectAllLocs();
 
       // Sync select-all courses
@@ -263,7 +270,9 @@
         onCourseSelectionChange();
       });
       document.addEventListener('change', e => {
-        if (e.target && e.target.classList && e.target.classList.contains('course')) syncSelectAllCourses();
+        if (e.target && e.target.classList && e.target.classList.contains('course')){
+          syncSelectAllCourses();
+        } 
       });
 
       // search-as-you-type (client-side filter of sidebar)
@@ -286,20 +295,25 @@
 
         // selected courses
         const selected = Array.from(document.querySelectorAll('.course:checked')).map(i => i.dataset.id + "||" + i.dataset.code);
-        //const selectedCodes = Array.from(document.querySelectorAll('.course:checked')).map(i => i.dataset.code);
         
         // 🟦 Save selection
         //localStorage.setItem("citc_selected_courses", JSON.stringify(selected));
 
         if (selected.length === 0) {
-          renderSectionsChunked({
-            "Regency Park": [],
-            "Mount Gambier": [],
-            "Port Pirie": [],
-            "Whyalla": []
-          });
+          const selectedLocations = new Set(
+              Array.from(document.querySelectorAll('.loc:checked')).map(i => i.value)
+          );
+
+          const emptyMap = {};
+          for (const loc of ["Regency Park", "Mount Gambier", "Port Pirie", "Whyalla"]) {
+              if (selectedLocations.has(loc)) {
+                  emptyMap[loc] = [];
+              }
+          }
+
+          renderSectionsChunked(emptyMap);
           return;
-        }
+      }
 
         // selected locations set
         const selectedLocations = new Set(Array.from(document.querySelectorAll('.loc:checked')).map(i => i.value));
@@ -329,18 +343,20 @@
         // group by location and render in columns
         const grouped = groupBy(filtered, r => r.location || 'Unknown');
 
-        // 🟦 NEW: Always include all 4 locations, even if empty
-        const fullMap = {
-          "Regency Park": grouped["Regency Park"] || [],
-          "Mount Gambier": grouped["Mount Gambier"] || [],
-          "Port Pirie": grouped["Port Pirie"] || [],
-          "Whyalla": grouped["Whyalla"] || []
-        };
+        // ONLY show selected locations
+const fullMap = {};
+for (const loc of ["Regency Park", "Mount Gambier", "Port Pirie", "Whyalla"]) {
+    if (selectedLocations.has(loc)) {
+        fullMap[loc] = grouped[loc] || [];
+    }
+}
 
-        // include unexpected locations too
-        for (const key in grouped) {
-          if (!fullMap[key]) fullMap[key] = grouped[key];
-        }
+// include API locations if user selected them
+for (const key in grouped) {
+    if (selectedLocations.has(key) && !fullMap[key]) {
+        fullMap[key] = grouped[key];
+    }
+}
 
         // render using the guaranteed-full map
         renderSectionsChunked(fullMap);

@@ -215,18 +215,19 @@
       // Render sidebar course list (checkboxes)
       function renderCourseList(courses) {
         // preserve previous checked state
-        const saved = JSON.parse(localStorage.getItem("citc_selected_courses") || "[]");
-        const savedSet = new Set(saved);
+        //const saved = JSON.parse(localStorage.getItem("citc_selected_courses") || "[]");
+        //const savedSet = new Set(saved);
 
         elCourseList.innerHTML = courses.map(c => {
-          const cleanName = stripHTML(c.name);
-          const checked = savedSet.has(String(c.id)) ? "checked" : "";
+          const cleanName = c.name;
+          //const checked = savedSet.has(String(c.id)) ? "checked" : "";
+          // Add this to below checkobx ${checked}
           return `<label class="course-item">
               <input type="checkbox" class="course"
                     data-id="${escapeHtml(c.id)}"
                     data-code="${escapeHtml(c.code)}"
                     value="${escapeHtml(cleanName)}"
-                    ${checked} />
+                     />
               ${escapeHtml(cleanName)}
             </label>`;
         }).join('');
@@ -288,7 +289,7 @@
         //const selectedCodes = Array.from(document.querySelectorAll('.course:checked')).map(i => i.dataset.code);
         
         // 🟦 Save selection
-        localStorage.setItem("citc_selected_courses", JSON.stringify(selected));
+        //localStorage.setItem("citc_selected_courses", JSON.stringify(selected));
 
         if (selected.length === 0) {
           renderSectionsChunked({
@@ -502,17 +503,7 @@
       function shortDate(v){ if(!v) return ''; const d = new Date(v); if(isNaN(d)) return v; const s = d.toLocaleDateString('en-AU',{ day:'2-digit', month:'short'}); return s.replace('.', ''); }
       function num(v){ return (v==null||isNaN(Number(v))) ? '-' : String(v); }
       function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m])); }
-      function stripHTML(str) {         
-        // 1. Remove all HTML tags
-        let cleaned = String(str || "").replace(/<[^>]*>/g, ""); 
-        
-        // 2. Decode HTML entities (amp, lt, gt, quot, apos, numeric, etc.)
-        const txt = document.createElement("textarea");
-        txt.innerHTML = cleaned;
-        cleaned = txt.value;
-
-        return cleaned.trim();
-      }
+      
       // initial load
       loadAllCourses();
     </script>

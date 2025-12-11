@@ -72,7 +72,7 @@ app.get("/api/courses", async (req, res) => {
     const mapped = rows.map(r => ({
       id: r.ID,
       code: r.CODE,
-      name: r.SHORTDESCRIPTION || r.DESCRIPTION || r.NAME || `Course ${r.ID}`
+      name: cleanString(r.SHORTDESCRIPTION || r.DESCRIPTION || r.NAME || `Course ${r.ID}`),
     }));
 
     mapped.sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
@@ -174,6 +174,19 @@ function normalize(payload) {
   return Array.isArray(arr) ? arr : [];
 }
 
+function cleanString(str = "") {
+  if (!str) return "";
+  // Remove HTML tags
+  let cleaned = str.replace(/<[^>]*>/g, "");
+
+  // Decode HTML entities like &amp; → &
+  cleaned = cleaned.replace(/&amp;/g, "&")
+                   .replace(/&nbsp;/g, " ")
+                   .replace(/&lt;/g, "<")
+                   .replace(/&gt;/g, ">");
+
+  return cleaned.trim();
+}
 
 app.listen(PORT, () => {
   console.log("CITC proxy running on port", PORT);

@@ -122,6 +122,7 @@ app.get("/api/course/instances", async (req, res) => {
         capacity: inst.MAXPARTICIPANTS,
         numbers: inst.PARTICIPANTS,
         availableSeats: inst.PARTICIPANTVACANCY,
+        enrollOpen: inst.ENROLMENTOPEN,
         cost: inst.COST,
         citb: inst.CUSTOMFIELD_CITB_PRICE 
           ? String(inst.CUSTOMFIELD_CITB_PRICE).replace(/\s+/g, '') 

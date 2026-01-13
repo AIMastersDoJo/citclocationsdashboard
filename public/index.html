@@ -18,6 +18,7 @@
         --muted: #6b7280;
         --ok: #16a34a;
         --full: #f00000;
+        --closed: #f00000;
       }
       * { box-sizing: border-box; }
       html, body { height: 100%; }
@@ -56,6 +57,7 @@
       .price { color: var(--citc-orange); font-weight: 800; }
       .full { color: var(--full); font-weight: 800; }
       .available { color: var(--ok);font-weight: 800; }
+      .closed { color: var(--closed);font-weight: 800; }
       .muted { color: var(--muted); }
       .loading { margin-top: 10px; color: var(--muted); font-size: 13px; }
       .loading-overlay {
@@ -463,8 +465,8 @@ for (const key in grouped) {
         const bodyRows = sorted.map(r => {
           const availableSeats = (typeof r.availableSeats === 'number') ? r.availableSeats : (r.capacity != null && r.participants != null ? r.capacity - r.participants : null);
           const isFull = isFinite(availableSeats) && Number(availableSeats) <= 0 && Number(r.capacity) > 0;
-          const statusClass = isFull ? 'full' : 'available';
-          const statusText = isFull ? 'Full' : 'Available';
+          const statusClass = isFull ? 'full' : r.enrollOpen ? 'available' : 'closed';
+          const statusText = isFull ? 'Full' : r.enrollOpen ? 'Available' : 'Enrollment Closed';
           return `<tr>
             <td>${shortDate(r.startDate)}</td>
             <td>${shortDate(r.endDate)}</td>

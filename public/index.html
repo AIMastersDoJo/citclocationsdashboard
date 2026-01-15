@@ -465,8 +465,8 @@ for (const key in grouped) {
         const bodyRows = sorted.map(r => {
           const availableSeats = (typeof r.availableSeats === 'number') ? r.availableSeats : (r.capacity != null && r.participants != null ? r.capacity - r.participants : null);
           const isFull = isFinite(availableSeats) && Number(availableSeats) <= 0 && Number(r.capacity) > 0;
-          const statusClass = isFull ? 'full' : r.enrollOpen ? 'available' : 'closed';
-          const statusText = isFull ? 'Full' : r.enrollOpen ? 'Available' : 'Enrollment Closed';
+          const statusClass = (!r.enrollOpen ? 'closed' : (isFull ? 'full' : 'available'));
+          const statusText = (!r.enrollOpen ? 'Enrolment Closed' : (isFull ? 'Full' : 'Available'));
           return `<tr>
             <td>${shortDate(r.startDate)}</td>
             <td>${shortDate(r.endDate)}</td>
